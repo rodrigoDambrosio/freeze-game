@@ -1,0 +1,329 @@
+/* ─── App layout ─── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(91, 156, 245, 0.07) 0%, transparent 70%),
+    var(--ink);
+  color: var(--text-primary);
+  overflow: hidden;
+  position: relative;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  padding: 16px 24px 24px;
+}
+
+/* ─── Idle / Welcome screen ─── */
+.idle-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  max-width: 640px;
+  margin: 0 auto;
+  text-align: center;
+  gap: 32px;
+  z-index: 10;
+}
+
+.idle-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.idle-title {
+  font-size: clamp(3rem, 7vw, 4.5rem);
+  font-weight: 300;
+  letter-spacing: -0.04em;
+  line-height: 1.0;
+  color: var(--bone);
+}
+
+.idle-title strong {
+  font-weight: 700;
+  color: var(--signal);
+}
+
+.idle-description {
+  font-size: 1.1rem;
+  line-height: 1.65;
+  color: var(--slate);
+  max-width: 480px;
+  font-weight: 400;
+}
+
+.idle-description strong {
+  color: var(--bone);
+  font-weight: 600;
+}
+
+.idle-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.idle-cuida-tagline {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  max-width: 420px;
+  line-height: 1.5;
+}
+
+/* ─── Game layout — camera fullscreen ─── */
+.game-layout {
+  flex: 1;
+  display: flex;
+  height: calc(100vh - 58px);
+  padding: 0;
+  margin: -16px -24px -24px; /* bleed out of app-main padding */
+  overflow: hidden;
+}
+
+.game-camera-wrap {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+}
+
+/* ─── HUD overlay ─── */
+.game-hud {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px 24px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* ─ HUD top row ─ */
+.hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  pointer-events: all;
+}
+
+/* State badge — left */
+.state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 14, 26, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  font-weight: 500;
+  font-size: 0.88rem;
+  letter-spacing: 0.01em;
+  color: var(--bone);
+}
+
+.state-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.state-detecting .state-dot {
+  background: var(--signal);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.state-detecting { border-color: rgba(91, 156, 245, 0.3); }
+
+.state-ready .state-dot {
+  background: var(--accent-yellow);
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+.state-ready { border-color: rgba(232, 170, 66, 0.3); }
+
+.state-playing .state-dot {
+  background: var(--pulse);
+  box-shadow: 0 0 7px var(--pulse);
+}
+.state-playing {
+  border-color: rgba(61, 214, 140, 0.35);
+  background: rgba(10, 14, 26, 0.75);
+}
+
+.state-won .state-dot  { background: var(--pulse); }
+.state-lost .state-dot { background: var(--accent-red); }
+
+/* Config pill — right */
+.hud-config {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 14, 26, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  gap: 10px;
+}
+
+.hud-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hud-config-label {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--slate);
+  letter-spacing: 0.03em;
+}
+
+.hud-config-value {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--bone);
+}
+
+.hud-config-sep {
+  width: 1px;
+  height: 28px;
+  background: var(--border-subtle);
+  flex-shrink: 0;
+}
+
+/* ─ HUD bottom ─ */
+.hud-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  pointer-events: all;
+  padding-bottom: 8px;
+}
+
+/* Timer block */
+.hud-timer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.timer-hint {
+  font-size: 0.78rem;
+  color: rgba(232, 228, 223, 0.65);
+  letter-spacing: 0.03em;
+  font-weight: 400;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+/* Instructions block */
+.hud-instructions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 14px 20px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 14, 26, 0.65);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  max-width: 320px;
+}
+
+.hud-instr-icon {
+  color: var(--signal);
+  margin-bottom: 2px;
+}
+
+.hud-instructions p {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--bone);
+  line-height: 1.3;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+.instruction-sub {
+  font-size: 0.8rem !important;
+  font-weight: 400 !important;
+  color: var(--slate) !important;
+  line-height: 1.4;
+}
+
+/* Action buttons */
+.hud-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-btn-back {
+  font-size: 0.85rem;
+  padding: 8px 20px;
+  background: rgba(10, 14, 26, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+/* ─── Error banners & spinners ─── */
+.error-banner {
+  background: rgba(224, 92, 92, 0.1);
+  border: 1px solid rgba(224, 92, 92, 0.4);
+  color: #f0a0a0;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  padding: 10px;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--signal);
+  border-radius: 50%;
+  animation: spinSlow 0.8s linear infinite;
+}
+
+.spinner-sm {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .hud-config { display: none; } /* hide config on very small screens */
+  .game-layout { margin: -16px -16px -16px; }
+}

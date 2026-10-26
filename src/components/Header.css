@@ -1,0 +1,77 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 58px;
+  position: relative;
+  z-index: 10;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  filter: drop-shadow(0 0 6px rgba(91, 156, 245, 0.3));
+}
+
+.header-text {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  line-height: 1;
+}
+
+.header-title {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: linear-gradient(90deg, var(--signal), var(--pulse));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.header-subtitle {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+/* SVG icon buttons — right side */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--slate);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.header-icon-btn:hover {
+  background: rgba(136, 146, 168, 0.1);
+  color: var(--bone);
+  border-color: var(--slate);
+}
+.header-icon-btn:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}

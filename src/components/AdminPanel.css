@@ -1,0 +1,192 @@
+.admin-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 26, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease;
+}
+
+.admin-panel {
+  width: min(480px, 92vw);
+  border-radius: var(--radius-xl);
+  padding: 0;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+}
+
+.admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 28px 28px 20px;
+}
+
+.admin-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.admin-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.admin-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 0;
+}
+
+.admin-section {
+  padding: 20px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.admin-value-badge {
+  background: var(--signal);
+  color: var(--ink);
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* ── Slider ── */
+.admin-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-range-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  min-width: 24px;
+}
+
+.admin-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: linear-gradient(to right, var(--accent-blue) 0%, var(--accent-blue) var(--progress, 50%), rgba(255,255,255,0.1) var(--progress, 50%));
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.admin-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-blue);
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 0 0 0 var(--accent-blue-glow);
+  cursor: pointer;
+  transition: box-shadow 0.2s ease;
+}
+.admin-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 0 6px var(--accent-blue-glow);
+}
+
+.admin-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.admin-hint strong {
+  color: var(--text-secondary);
+}
+
+/* ── Sensitivity ── */
+.admin-sensitivity-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-sensitivity-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+  font-family: var(--font);
+}
+
+.admin-sensitivity-btn:hover {
+  background: rgba(91, 156, 245, 0.07);
+  border-color: rgba(91, 156, 245, 0.25);
+}
+
+.admin-sensitivity-btn.active {
+  background: rgba(91, 156, 245, 0.1);
+  border-color: var(--signal);
+  box-shadow: 0 0 0 1px var(--signal);
+}
+
+.sensitivity-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.admin-sensitivity-btn.active .sensitivity-name {
+  color: var(--signal);
+}
+
+.sensitivity-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* ── Footer ── */
+.admin-footer {
+  padding: 16px 28px 24px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-tech-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.tech-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
