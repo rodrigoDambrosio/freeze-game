@@ -66,9 +66,8 @@ export const MIN_POSE_CONFIDENCE = 0.55;
 // Minimum landmark visibility to include it in movement calculation
 export const MIN_LANDMARK_VISIBILITY = 0.45;
 
-// MediaPipe model URL (CDN)
-export const MEDIAPIPE_MODEL_URL =
-  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+// MediaPipe model, served locally from public/models (works offline)
+export const MEDIAPIPE_MODEL_URL = '/models/pose_landmarker_lite.task';
 
 // C.U.I.D.A. branding
 export const CUIDA_FULL_NAME = 'C.U.I.D.A.';

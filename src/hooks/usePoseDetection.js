@@ -6,7 +6,10 @@
  * Supports GPU with automatic CPU fallback, and ensures seamless startup.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import { PoseLandmarker } from '@mediapipe/tasks-vision';
+// Wasm runtime served from node_modules so it always matches the installed package version
+import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url';
+import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url';
 import { MEDIAPIPE_MODEL_URL, MIN_POSE_CONFIDENCE } from '../lib/constants.js';
 
 export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
@@ -33,9 +36,7 @@ export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-      );
+      const vision = { wasmLoaderPath, wasmBinaryPath };
 
       try {
         landmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
@@ -67,7 +68,7 @@ export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
       setIsModelReady(true);
     } catch (err) {
       console.error('MediaPipe load error:', err);
-      setLoadError('No se pudo cargar el modelo de detección. Verificá tu conexión.');
+      setLoadError('No se pudo cargar el modelo de detección.');
     } finally {
       setIsLoading(false);
     }
