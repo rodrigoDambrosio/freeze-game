@@ -1,7 +1,11 @@
 // ─── Game configuration defaults ───────────────────────────────────────────
-export const DEFAULT_FREEZE_SECONDS = 5;
-export const MIN_FREEZE_SECONDS = 3;
-export const MAX_FREEZE_SECONDS = 30;
+// The challenge is to keep C.U.I.D.A. from detecting any sign of life. The
+// round has to run long enough for every detector to have its say —
+// breathing rate in particular needs about fifteen seconds of signal — so
+// twenty seconds is the floor rather than a preference.
+export const DEFAULT_FREEZE_SECONDS = 20;
+export const MIN_FREEZE_SECONDS = 20;
+export const MAX_FREEZE_SECONDS = 60;
 
 // Sensitivity levels → movement thresholds (normalized coords 0..1)
 // dynamic: frame-window velocity threshold
@@ -97,6 +101,11 @@ export const BOX_COLORS = {
 //   alpha = min(1, MIN_ALPHA + displacement * GAIN)
 export const LANDMARK_SMOOTHING_MIN_ALPHA = 0.25;
 export const LANDMARK_SMOOTHING_GAIN = 25;
+
+// Residual normalized jitter that is ignored by both velocity and anchor
+// drift. This prevents a static image or a motionless player from losing to
+// sub-pixel landmark noise while preserving deliberate movement.
+export const LANDMARK_NOISE_FLOOR = 0.0025;
 
 // How fast a landmark's visibility is allowed to fall. Holding the last good
 // position for a frame or two prevents the averaging set (and the centroid)
@@ -211,10 +220,12 @@ export const HEAD_MOTION_WINDOW_FRAMES = 60;
 export const HEAD_MOTION_ACTIVE = 0.006;
 
 // Breathing: found by periodicity, not amplitude. The window must hold at
-// least two full cycles at the slowest rate searched for.
+// least two full cycles at the slowest rate searched for. The upper end
+// reaches past normal into tachypnoea: a rate that high is the most
+// alarming case, so it must be inside the search range, not above it.
 export const BREATHING_WINDOW_FRAMES = 600;   // ~20s at 30fps
 export const BREATHING_MIN_RPM = 8;
-export const BREATHING_MAX_RPM = 30;
+export const BREATHING_MAX_RPM = 40;
 export const BREATHING_MIN_CONFIDENCE = 0.35;
 
 // How long without any sign of consciousness before the state escalates.
@@ -231,3 +242,34 @@ export const GESTURE_CALIBRATION_FRAMES = 12;
 // A gesture must hold this many consecutive frames to end the round, the same
 // confirmation the body movement gets.
 export const GESTURE_CONFIRM_FRAMES = 4;
+
+
+// ─── Blink budget & breathing in the game ───────────────────────────────────
+// A blink budget makes an involuntary reflex playable: not "do not blink",
+// which is unwinnable, but "hold out without blinking too much". A resting
+// adult blinks 12-20 times a minute, so the budget scales with round length
+// and is set AT that resting rate (0.25/s = 15/min): blinking normally
+// leaves you right at the edge, which is what makes it a game rather than a
+// formality. 0 means any blink ends the round; null means no limit.
+export const BLINK_BUDGET_PER_SECOND = 0.25;
+export const BLINK_BUDGET_MIN = 2;
+
+// Breathing is an opt-in game detector. It is useful for the C.U.I.D.A. demo
+// but too hard to suppress for a public presentation, so the game leaves it
+// informational by default.
+export const BREATHING_RAPID_RPM = 24;
+
+// Rapid breathing must hold this long before it counts, since the rate comes
+// from a 20s window and should not flip the result on one noisy estimate.
+export const BREATHING_RAPID_HOLD_MS = 2000;
+
+
+// ─── Breathing PRESENCE (the game) ──────────────────────────────────────────
+// Rate needs ~20s of signal; presence needs about one cycle, which is what a
+// five-second round can afford. Measured as peak-to-peak amplitude of the
+// de-trended shoulder line, in units of shoulder width.
+export const BREATHING_FAST_WINDOW_FRAMES = 120;   // ~4s at 30fps
+
+// Breathing lifts the shoulder line by roughly 1% of shoulder width. The
+// threshold sits below that but well above the smoothed detector noise.
+export const BREATHING_AMPLITUDE_THRESHOLD = 0.006;

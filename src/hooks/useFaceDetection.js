@@ -20,7 +20,6 @@ import { MEDIAPIPE_FACE_MODEL_URL, MIN_POSE_CONFIDENCE } from '../lib/constants.
 export function useFaceDetection(videoRef, isVideoReady, enabled) {
   const landmarkerRef = useRef(null);
   const rafRef = useRef(null);
-  const lastVideoTimeRef = useRef(-1);
   const lastTimestampRef = useRef(0);
   const onFrameRef = useRef(null);
 
@@ -75,20 +74,18 @@ export function useFaceDetection(videoRef, isVideoReady, enabled) {
       const landmarker = landmarkerRef.current;
       if (!video || !landmarker) return;
 
-      if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current) {
-        lastVideoTimeRef.current = video.currentTime;
-        const now = performance.now();
-
-        if (now > lastTimestampRef.current) {
-          lastTimestampRef.current = now;
-          try {
-            const result = landmarker.detectForVideo(video, now);
-            const landmarks = result.faceLandmarks?.[0] ?? null;
-            const blendshapes = result.faceBlendshapes?.[0]?.categories ?? null;
-            onFrameRef.current?.({ landmarks, blendshapes, now });
-          } catch {
-            // Suppress per-frame inference errors
-          }
+      // MediaStream videos commonly keep currentTime at zero. Gate by wall
+      // clock instead, otherwise inference silently stops after the first frame.
+      const now = performance.now();
+      if (video.readyState >= 2 && now - lastTimestampRef.current >= 33) {
+        lastTimestampRef.current = now;
+        try {
+          const result = landmarker.detectForVideo(video, now);
+          const landmarks = result.faceLandmarks?.[0] ?? null;
+          const blendshapes = result.faceBlendshapes?.[0]?.categories ?? null;
+          onFrameRef.current?.({ landmarks, blendshapes, now });
+        } catch {
+          // Suppress per-frame inference errors
         }
       }
 

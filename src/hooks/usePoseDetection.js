@@ -15,7 +15,6 @@ import { MEDIAPIPE_MODEL_URL, MIN_POSE_CONFIDENCE } from '../lib/constants.js';
 export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
   const landmarkerRef = useRef(null);
   const rafRef = useRef(null);
-  const lastVideoTimeRef = useRef(-1);
   const lastTimestampRef = useRef(0);
 
   const [landmarks, setLandmarks] = useState(null);
@@ -84,24 +83,21 @@ export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
       const landmarker = landmarkerRef.current;
       if (!video || !landmarker) return;
 
-      // Only run inference when video is actively playing and has advanced
-      if (video.readyState >= 2 && video.currentTime !== lastVideoTimeRef.current) {
-        lastVideoTimeRef.current = video.currentTime;
-        const now = performance.now();
+      // MediaStream videos commonly keep currentTime at zero. Gate by wall
+      // clock instead, otherwise inference silently stops after the first frame.
+      const now = performance.now();
+      if (video.readyState >= 2 && now - lastTimestampRef.current >= 33) {
+        lastTimestampRef.current = now;
+        try {
+          const result = landmarker.detectForVideo(video, now);
+          const lms = result.landmarks?.[0] ?? null; // first (most prominent) person
+          setLandmarks(lms);
 
-        if (now > lastTimestampRef.current) {
-          lastTimestampRef.current = now;
-          try {
-            const result = landmarker.detectForVideo(video, now);
-            const lms = result.landmarks?.[0] ?? null; // first (most prominent) person
-            setLandmarks(lms);
-
-            if (onFrameRef.current) {
-              onFrameRef.current(lms, video);
-            }
-          } catch {
-            // Suppress frame inference errors
+          if (onFrameRef.current) {
+            onFrameRef.current(lms, video);
           }
+        } catch {
+          // Suppress frame inference errors
         }
       }
 

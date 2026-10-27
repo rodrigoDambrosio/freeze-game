@@ -11,6 +11,13 @@ import './AdminPanel.css';
  * Modal glassmorphism panel for admin configuration.
  * Controls: freeze duration (slider) + sensitivity (radio buttons).
  */
+const BLINK_OPTIONS = [
+  { value: 0, label: 'Ninguno' },
+  { value: 1, label: '1' },
+  { value: 3, label: '3' },
+  { value: 5, label: '5' },
+];
+
 export default function AdminPanel({
   isOpen,
   onClose,
@@ -20,8 +27,12 @@ export default function AdminPanel({
   onSensitivityChange,
   detectGestures,
   onDetectGesturesChange,
-  penalizeBlink,
-  onPenalizeBlinkChange,
+  blinkBudget,
+  onBlinkBudgetChange,
+  detectBlink,
+  onDetectBlinkChange,
+  detectBreathing,
+  onDetectBreathingChange,
 }) {
   if (!isOpen) return null;
 
@@ -124,18 +135,61 @@ export default function AdminPanel({
           <label className="admin-toggle">
             <input
               type="checkbox"
-              id="penalize-blink"
-              checked={penalizeBlink}
-              onChange={(e) => onPenalizeBlinkChange(e.target.checked)}
+              id="detect-breathing"
+              checked={detectBreathing}
+              onChange={(e) => onDetectBreathingChange(e.target.checked)}
             />
             <span className="admin-toggle-body">
-              <span className="admin-toggle-name">Penalizar parpadeo</span>
+              <span className="admin-toggle-name">Detectar respiración</span>
               <span className="admin-toggle-desc">
-                Desactivado por defecto: parpadear es involuntario. El sistema
-                lo detecta y lo muestra igual.
+                La señal más difícil de suprimir, y la que casi nadie logra
+                ocultar. Desactivala para que el desafío sea ganable.
               </span>
             </span>
           </label>
+
+          <label className="admin-toggle">
+            <input
+              type="checkbox"
+              id="detect-blink"
+              checked={detectBlink}
+              onChange={(e) => onDetectBlinkChange(e.target.checked)}
+            />
+            <span className="admin-toggle-body">
+              <span className="admin-toggle-name">Detectar parpadeo</span>
+              <span className="admin-toggle-desc">
+                Con tolerancia 0, el primer parpadeo delata al jugador.
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <div className="admin-divider" />
+
+        <section className="admin-section">
+          <label className="admin-label" htmlFor="blink-budget">
+            Parpadeos tolerados
+            <span className="admin-value">
+              {blinkBudget === 0 ? 'Ninguno' : blinkBudget}
+            </span>
+          </label>
+          <p className="admin-hint">
+            Cuántos parpadeos se le toleran al jugador antes de que el sistema
+            lo dé por detectado. Un adulto en reposo parpadea unas 15 veces por
+            minuto, así que cualquier tolerancia baja es un desafío real.
+          </p>
+          <div className="admin-sensitivity-grid admin-blink-grid">
+            {BLINK_OPTIONS.map((opt) => (
+              <button
+                key={String(opt.value)}
+                id={`blink-${opt.value}`}
+                className={`admin-sensitivity-btn ${blinkBudget === opt.value ? 'active' : ''}`}
+                onClick={() => onBlinkBudgetChange(opt.value)}
+              >
+                <span className="sensitivity-name">{opt.label}</span>
+              </button>
+            ))}
+          </div>
         </section>
 
         <div className="admin-divider" />

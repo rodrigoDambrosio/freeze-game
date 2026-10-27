@@ -25,9 +25,10 @@ export default function App() {
   const game = useGameLogic();
   const pose = usePoseDetection(camera.videoRef, null, camera.isReady);
 
-  // Face landmarker runs whenever the camera does: facial gestures are part
-  // of the freeze, and the vitality read-out is live throughout.
-  const face = useFaceDetection(camera.videoRef, camera.isReady, camera.isReady);
+  // Keep the facial detector fully stopped until the player starts the round.
+  // Pose detection still checks presence so the UI can enable "Empezar".
+  const faceEnabled = camera.isReady && game.gameState === GAME_STATE.PLAYING;
+  const face = useFaceDetection(camera.videoRef, camera.isReady, faceEnabled);
 
   // ── Persist theme ─────────────────────────────────────────────────────────
   const toggleTheme = useCallback(() => {
@@ -107,11 +108,16 @@ export default function App() {
           <section className="idle-screen animate-fadeIn" id="idle-screen">
             <div className="idle-hero">
               <h1 className="idle-title">
-                <strong>Freeze</strong> Challenge
+                ¿Podés <strong>engañar</strong> al sistema?
               </h1>
               <p className="idle-description">
-                Quedate quieto por <strong>{game.freezeSeconds} segundos</strong> para ganar.
-                El sistema de visión de <strong>C.U.I.D.A.</strong> detecta cada movimiento.
+                Durante <strong>{game.freezeSeconds} segundos</strong>, evitá que
+                {' '}<strong>C.U.I.D.A.</strong> detecte movimiento o gestos.
+                Se permiten algunos parpadeos; la respiración se muestra como
+                señal informativa.
+              </p>
+              <p className="idle-prize">
+                Nadie lo logró todavía. Si lo conseguís, te llevás el premio.
               </p>
             </div>
 
@@ -187,7 +193,10 @@ export default function App() {
                 gestureDrift={game.gestureDrift}
                 gestureThreshold={SENSITIVITY_LEVELS[game.sensitivity].gestureThreshold}
                 detectGestures={game.detectGestures}
-                isPlaying={isPlaying}
+                detectBlink={game.detectBlink}
+                detectBreathing={game.detectBreathing}
+                blinkCount={game.blinkCount}
+                blinkLimit={game.blinkLimit}
               />
               )}
               {face.loadError && (
@@ -206,10 +215,10 @@ export default function App() {
                       <span className="state-dot" />
                       <span className="state-label">
                         {game.gameState === GAME_STATE.DETECTING && 'Buscando jugador…'}
-                        {game.gameState === GAME_STATE.READY     && '¡Listo para jugar!'}
-                        {game.gameState === GAME_STATE.PLAYING   && '¡No te muevas!'}
-                        {game.gameState === GAME_STATE.WON       && '¡Victoria!'}
-                        {game.gameState === GAME_STATE.LOST      && '¡Movimiento!'}
+                        {game.gameState === GAME_STATE.READY     && 'Listo — te estamos viendo'}
+                        {game.gameState === GAME_STATE.PLAYING   && 'Intentá no ser detectado'}
+                        {game.gameState === GAME_STATE.WON       && '¡Nos engañaste!'}
+                        {game.gameState === GAME_STATE.LOST      && 'Te detectamos'}
                       </span>
                     </div>
 
@@ -232,7 +241,7 @@ export default function App() {
                     {isPlaying && (
                       <div className="hud-timer animate-fadeInScale">
                         <Timer timeLeft={game.timeLeft} totalSeconds={game.freezeSeconds} />
-                        <p className="timer-hint">segundos para ganar</p>
+                        <p className="timer-hint">segundos sin ser detectado</p>
                       </div>
                     )}
 
@@ -243,14 +252,14 @@ export default function App() {
                           <>
                             <ScanIcon />
                             <p>Colocate frente a la cámara</p>
-                            <p className="instruction-sub">El sistema te detectará automáticamente</p>
+                            <p className="instruction-sub">El sistema necesita verte antes de empezar</p>
                           </>
                         )}
                         {game.gameState === GAME_STATE.READY && (
                           <>
                             <ReadyIcon />
-                            <p>¡Persona detectada!</p>
-                            <p className="instruction-sub">El administrador puede iniciar el juego</p>
+                            <p>Te encontramos</p>
+                            <p className="instruction-sub">A partir de ahora, intentá desaparecer</p>
                           </>
                         )}
                       </div>
@@ -292,6 +301,7 @@ export default function App() {
                   infractionReason={game.infractionReason}
                   blinkCount={game.blinkCount}
                   vitality={game.vitality}
+                  detectedSignal={game.detectedSignal}
                 />
               )}
             </div>
@@ -309,8 +319,12 @@ export default function App() {
         onSensitivityChange={game.setSensitivity}
         detectGestures={game.detectGestures}
         onDetectGesturesChange={game.setDetectGestures}
-        penalizeBlink={game.penalizeBlink}
-        onPenalizeBlinkChange={game.setPenalizeBlink}
+        blinkBudget={game.blinkBudget}
+        onBlinkBudgetChange={game.setBlinkBudget}
+        detectBlink={game.detectBlink}
+        onDetectBlinkChange={game.setDetectBlink}
+        detectBreathing={game.detectBreathing}
+        onDetectBreathingChange={game.setDetectBreathing}
       />
     </div>
   );

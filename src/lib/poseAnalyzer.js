@@ -24,6 +24,7 @@ import {
   MOVEMENT_WINDOW_FRAMES,
   LANDMARK_SMOOTHING_MIN_ALPHA,
   LANDMARK_SMOOTHING_GAIN,
+  LANDMARK_NOISE_FLOOR,
   VISIBILITY_DECAY_ALPHA,
   SCORE_MEDIAN_WINDOW,
   ANCHOR_SAMPLE_FRAMES,
@@ -117,7 +118,7 @@ export function calculateZoneDisplacement(current, previous, indices, scale = 1.
 
     if (!isLandmarkUsable(curr) || !isLandmarkUsable(prev)) continue;
 
-    distances.push(pointDistance(curr, prev) / scale);
+    distances.push(Math.max(0, pointDistance(curr, prev) / scale - LANDMARK_NOISE_FLOOR));
   }
 
   if (distances.length === 0) return { displacement: 0, maxDisplacement: 0, validCount: 0 };
@@ -183,7 +184,7 @@ export function calculateGroupTranslation(current, previous, indices, scale = 1.
   }
 
   if (count === 0) return 0;
-  return Math.hypot(sumDx / count, sumDy / count) / scale;
+  return Math.max(0, Math.hypot(sumDx / count, sumDy / count) / scale - LANDMARK_NOISE_FLOOR);
 }
 
 /**

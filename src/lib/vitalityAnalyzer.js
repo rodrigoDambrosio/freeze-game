@@ -38,6 +38,8 @@ import {
   BREATHING_MIN_RPM,
   BREATHING_MAX_RPM,
   BREATHING_MIN_CONFIDENCE,
+  BREATHING_FAST_WINDOW_FRAMES,
+  BREATHING_AMPLITUDE_THRESHOLD,
   VITALITY_STILL_MS,
   VITALITY_ALERT_MS,
 } from './constants.js';
@@ -150,6 +152,56 @@ export function findPeriodicity(signal, minLag, maxLag, smoothing = 5) {
 }
 
 /**
+ * Amplitude of the breathing oscillation over a short window.
+ *
+ * findPeriodicity measures the RATE, which needs ~20s of signal to see two
+ * full cycles. A round lasts five seconds, so for the game the question is
+ * not how fast someone breathes but WHETHER the chest is moving at all —
+ * and that shows up in about one cycle.
+ *
+ * A short moving average removes detector noise, a least-squares line
+ * removes the postural drift underneath, and what is left is the breath.
+ * Amplitude is derived from the standard deviation of the residual rather
+ * than its peak-to-peak range. Both describe a sine the same way, but
+ * peak-to-peak of random noise grows with how long you look at it, so it
+ * would read a longer window as a bigger breath. Standard deviation does
+ * not, which is what separates a shallow breath from a still chest.
+ *
+ * Returns the equivalent peak-to-peak amplitude of a sine, in input units.
+ */
+export function breathingAmplitude(signal, smoothing = 9) {
+  const n = signal.length;
+  if (n < 30) return 0;
+
+  const smooth = [];
+  for (let i = 0; i < n; i++) {
+    const from = Math.max(0, i - smoothing + 1);
+    let sum = 0;
+    for (let k = from; k <= i; k++) sum += signal[k];
+    smooth.push(sum / (i - from + 1));
+  }
+
+  // Least-squares line through the window. Over a few seconds a moving
+  // average would eat part of the breath itself; a straight line will not.
+  let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i; sumY += smooth[i];
+    sumXY += i * smooth[i]; sumXX += i * i;
+  }
+  const denom = n * sumXX - sumX * sumX;
+  const slope = denom === 0 ? 0 : (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+
+  let sumSq = 0;
+  for (let i = 0; i < n; i++) {
+    const residual = smooth[i] - (slope * i + intercept);
+    sumSq += residual * residual;
+  }
+  // For a sine, peak-to-peak = 2*sqrt(2) * rms.
+  return 2 * Math.SQRT2 * Math.sqrt(sumSq / n);
+}
+
+/**
  * VitalityAnalyzer
  *
  * Fed one frame at a time; keeps the rolling history each signal needs.
@@ -163,10 +215,17 @@ export class VitalityAnalyzer {
     this._blinkTimes = [];
     this._eyeClosed = false;
     this._lastBlinkAt = null;
+    // Monotonic count since reset, so a round can budget blinks without
+    // being affected by the 60s window the rate is measured over.
+    this._totalBlinks = 0;
 
     this._expressionHistory = [];
     this._headHistory = [];
+    this._headScale = null;
     this._breathSignal = [];
+    // Short buffer, normalised by body width, for breathing PRESENCE.
+    this._breathFast = [];
+    this._bodyWidth = null;
 
     this._frameTimes = [];
     this._lastMotionAt = null;
@@ -219,6 +278,7 @@ export class VitalityAnalyzer {
         this._eyeClosed = true;
         this._blinkTimes.push(now);
         this._lastBlinkAt = now;
+        this._totalBlinks++;
       } else if (this._eyeClosed && blinkValue < BLINK_RELEASE) {
         this._eyeClosed = false;
       }
@@ -250,13 +310,23 @@ export class VitalityAnalyzer {
     let headActivity = 0;
     const nose = faceLandmarks?.[1] ?? poseLandmarks?.[0];
     if (nose) {
-      let headScale = 0.08;
+      let measured = 0.08;
       if (poseLandmarks?.[7] && poseLandmarks?.[8]) {
         const dx = poseLandmarks[7].x - poseLandmarks[8].x;
         const dy = poseLandmarks[7].y - poseLandmarks[8].y;
         const d = Math.hypot(dx, dy);
-        if (d > 0.02) headScale = d;
+        if (d > 0.02) measured = d;
       }
+
+      // The scale has to be SMOOTHED before dividing by it. The nose sits at
+      // roughly 2.5 head-widths from the origin, so a scale that wobbles by
+      // a fraction of a percent moves that quotient by more than the
+      // threshold — the detector would be reading its own scale noise as
+      // head movement, and no one could ever hold still enough.
+      this._headScale = this._headScale === null
+        ? measured
+        : this._headScale + (measured - this._headScale) * 0.02;
+      const headScale = this._headScale;
       this._headHistory.push({ x: nose.x / headScale, y: nose.y / headScale });
       if (this._headHistory.length > HEAD_MOTION_WINDOW_FRAMES) this._headHistory.shift();
 
@@ -280,14 +350,40 @@ export class VitalityAnalyzer {
     if (breathSample !== null) {
       this._breathSignal.push(breathSample);
       if (this._breathSignal.length > BREATHING_WINDOW_FRAMES) this._breathSignal.shift();
+
+      // Normalise by body width so the amplitude threshold means the same
+      // whether the person fills the frame or stands back from it — but by a
+      // SMOOTHED width, for the same reason as the head scale above: the
+      // shoulder line sits ~2 widths from the origin, so a width that jitters
+      // by a fraction of a percent fakes a breath out of nothing.
+      let measuredWidth = 0.22;
+      if (poseLandmarks?.[11] && poseLandmarks?.[12]) {
+        const w = Math.hypot(
+          poseLandmarks[11].x - poseLandmarks[12].x,
+          poseLandmarks[11].y - poseLandmarks[12].y
+        );
+        if (w > 0.05) measuredWidth = w;
+      }
+      this._bodyWidth = this._bodyWidth === null
+        ? measuredWidth
+        : this._bodyWidth + (measuredWidth - this._bodyWidth) * 0.02;
+
+      this._breathFast.push(breathSample / this._bodyWidth);
+      if (this._breathFast.length > BREATHING_FAST_WINDOW_FRAMES) this._breathFast.shift();
     }
 
     const fps = this._fps();
     const minLag = Math.round((60 / BREATHING_MAX_RPM) * fps);
     const maxLag = Math.round((60 / BREATHING_MIN_RPM) * fps);
     const { lag, confidence } = findPeriodicity(this._breathSignal, minLag, maxLag);
-    const breathingDetected = confidence >= BREATHING_MIN_CONFIDENCE && lag > 0;
-    const breathingRate = breathingDetected ? (60 * fps) / lag : null;
+    const rateKnown = confidence >= BREATHING_MIN_CONFIDENCE && lag > 0;
+    const breathingRate = rateKnown ? (60 * fps) / lag : null;
+
+    // Presence: is the chest moving at all, answered in about one cycle.
+    const breathAmplitude = breathingAmplitude(this._breathFast);
+    const breathingPresent = breathAmplitude > BREATHING_AMPLITUDE_THRESHOLD;
+    const breathingReady = this._breathFast.length >= BREATHING_FAST_WINDOW_FRAMES;
+    const breathingDetected = breathingPresent || rateKnown;
 
     // ── Decide the state ───────────────────────────────────────────────────
     const blinkedRecently =
@@ -323,9 +419,11 @@ export class VitalityAnalyzer {
     return this._report({
       state, now, blinkValue, blinkRate,
       blinkCount: this._blinkTimes.length,
+      totalBlinks: this._totalBlinks,
       lastBlinkAgo: this._lastBlinkAt === null ? null : now - this._lastBlinkAt,
       expressionActivity, headActivity,
       breathingDetected, breathingRate, breathingConfidence: confidence,
+      breathingPresent, breathingReady, breathAmplitude, rateKnown,
       stillMs, fps,
       samples: this._breathSignal.length,
       breathingWindowNeeded: maxLag * 2,

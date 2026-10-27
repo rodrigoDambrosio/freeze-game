@@ -1,83 +1,90 @@
 import React from 'react';
 import { VITALITY_STATE } from '../lib/vitalityAnalyzer.js';
 import {
-  BLINK_RATE_LOW,
-  BLINK_RATE_NORMAL,
   EXPRESSION_ACTIVE_STD,
   HEAD_MOTION_ACTIVE,
-  VITALITY_ALERT_MS,
+  BREATHING_AMPLITUDE_THRESHOLD,
 } from '../lib/constants.js';
 import './VitalityMonitor.css';
 
 /**
  * VitalityMonitor
  *
- * The signs-of-life read-out. Each signal is shown with its own live value
- * rather than rolled into a single number, because which signal is missing is
- * the diagnostically useful part: a person who blinks but does not move is a
- * different situation from one who breathes but does nothing else.
+ * The scoreboard of the challenge, read from the player's side: each row is a
+ * detector trying to prove they are alive. Green means that detector has
+ * nothing — the player is winning that one. Red means it found them.
+ *
+ * Each signal keeps its own row rather than being rolled into one number,
+ * because which one gives a player away is the interesting part. Nearly
+ * everyone can hold still; almost nobody can stop breathing.
  */
 
 const STATE_COPY = {
   [VITALITY_STATE.NO_SIGNAL]: {
     title: 'Sin señal',
-    detail: 'No se detecta ninguna persona en el encuadre.',
+    detail: 'No hay nadie en el encuadre.',
   },
   [VITALITY_STATE.ACTIVE]: {
-    title: 'Persona activa',
-    detail: 'Movimiento evidente. Sin observaciones.',
+    title: 'Claramente con vida',
+    detail: 'Movimiento evidente. Así es imposible.',
   },
   [VITALITY_STATE.CALM]: {
-    title: 'En reposo',
-    detail: 'Quieta, con signos de consciencia presentes.',
+    title: 'Con vida',
+    detail: 'El sistema sigue encontrando señales.',
   },
   [VITALITY_STATE.STILL]: {
-    title: 'Inmóvil',
-    detail: 'Sin parpadeo ni gestos. Se mantiene señal corporal.',
+    title: 'Casi indetectable',
+    detail: 'Sin signos de consciencia. Queda la señal corporal.',
   },
   [VITALITY_STATE.UNRESPONSIVE]: {
-    title: 'Sin respuesta',
-    detail: 'Sin signos de consciencia ni señal corporal periódica.',
+    title: 'Indetectable',
+    detail: 'El sistema no encuentra señales de vida.',
   },
 };
 
-function Signal({ label, detected, value, hint, pending }) {
-  const status = pending ? 'pending' : detected ? 'on' : 'off';
+/**
+ * One detector's row.
+ *
+ * `found` is true when this detector has caught the player, which is the bad
+ * outcome for them — so red means found, green means still hidden.
+ */
+function Detector({ label, found, value, hint, pending, disabled }) {
+  const status = disabled ? 'disabled' : pending ? 'pending' : found ? 'found' : 'hidden';
   return (
-    <div className={`vm-signal vm-signal-${status}`}>
-      <span className="vm-signal-dot" />
-      <div className="vm-signal-body">
-        <span className="vm-signal-label">{label}</span>
-        <span className="vm-signal-value">{value}</span>
+    <div className={`vm-det vm-det-${status}`}>
+      <span className="vm-det-dot" />
+      <div className="vm-det-body">
+        <span className="vm-det-label">{label}</span>
+        <span className="vm-det-value">{disabled ? 'desactivado' : value}</span>
       </div>
-      {hint && <span className="vm-signal-hint">{hint}</span>}
+      {hint && !disabled && <span className="vm-det-hint">{hint}</span>}
     </div>
   );
 }
 
 function Meter({ value, threshold }) {
-  const pct = Math.min(100, threshold > 0 ? (value / (threshold * 3)) * 100 : 0);
+  const ratio = threshold > 0 ? value / threshold : 0;
+  const pct = Math.min(100, (ratio / 2) * 100);
   return (
     <div className="vm-meter">
-      <div className="vm-meter-fill" style={{ width: `${pct}%` }} />
       <div
-        className="vm-meter-mark"
-        style={{ left: `${Math.min(100, (1 / 3) * 100)}%` }}
+        className={`vm-meter-fill ${ratio >= 1 ? 'vm-meter-over' : ''}`}
+        style={{ width: `${pct}%` }}
       />
+      <div className="vm-meter-mark" style={{ left: '50%' }} />
     </div>
   );
 }
 
 export default function VitalityMonitor({
   reading, faceLoading, gestureDrift = 0, gestureThreshold = 1,
-  detectGestures = true, isPlaying = false,
+  detectGestures = true, detectBlink = true, detectBreathing = true,
+  blinkCount = 0, blinkLimit = null,
 }) {
   if (faceLoading) {
     return (
       <div className="vm-panel">
-        <div className="vm-head">
-          <span className="vm-title">Monitor de signos vitales</span>
-        </div>
+        <div className="vm-head"><span className="vm-title">Detectores</span></div>
         <div className="vm-loading">
           <div className="spinner spinner-sm" />
           <span>Cargando modelo facial…</span>
@@ -89,25 +96,31 @@ export default function VitalityMonitor({
   const state = reading?.state ?? VITALITY_STATE.NO_SIGNAL;
   const copy = STATE_COPY[state];
 
-  const blinkRate = reading?.blinkRate;
-  const blinkDetected = blinkRate !== null && blinkRate !== undefined && blinkRate >= BLINK_RATE_LOW;
-  const blinkPending = blinkRate === null || blinkRate === undefined;
-
   const expression = reading?.expressionActivity ?? 0;
   const head = reading?.headActivity ?? 0;
+  const breathAmp = reading?.breathAmplitude ?? 0;
+  const breathFound = reading?.breathingDetected ?? false;
+  const breathReady = reading?.breathingReady ?? false;
 
-  const breathing = reading?.breathingDetected ?? false;
-  const breathRate = reading?.breathingRate;
-  const breathPending =
-    (reading?.samples ?? 0) < (reading?.breathingWindowNeeded ?? Infinity);
+  const blinkFound = blinkLimit !== null && blinkCount > blinkLimit;
+  const gestureFound = gestureDrift > gestureThreshold;
+  const headFound = head > HEAD_MOTION_ACTIVE;
 
-  const stillSeconds = reading?.stillMs ? Math.floor(reading.stillMs / 1000) : 0;
+  // How many detectors currently have the player. Zero is what wins.
+  const found = [
+    detectBlink && blinkFound,
+    detectGestures && gestureFound,
+    detectBreathing && breathFound,
+    headFound,
+  ].filter(Boolean).length;
 
   return (
     <div className={`vm-panel vm-state-${state.toLowerCase()}`}>
       <div className="vm-head">
-        <span className="vm-title">Monitor de signos vitales</span>
-        <span className="vm-chip">{reading?.fps ? `${Math.round(reading.fps)} fps` : '—'}</span>
+        <span className="vm-title">Detectores</span>
+        <span className={`vm-count ${found === 0 ? 'vm-count-clear' : ''}`}>
+          {found === 0 ? 'ninguno te ve' : `${found} te detecta${found > 1 ? 'n' : ''}`}
+        </span>
       </div>
 
       <div className="vm-state">
@@ -118,82 +131,73 @@ export default function VitalityMonitor({
         </div>
       </div>
 
-      {state !== VITALITY_STATE.NO_SIGNAL && (
-        <div className="vm-still">
-          Sin signos de consciencia hace <strong>{stillSeconds}s</strong>
-          <span className="vm-still-limit"> / alerta a los {VITALITY_ALERT_MS / 1000}s</span>
-        </div>
-      )}
-
       <div className="vm-signals">
-        <Signal
+        <Detector
           label="Parpadeo"
-          detected={blinkDetected}
-          pending={blinkPending}
+          disabled={!detectBlink}
+          found={blinkFound}
           value={
-            blinkPending
-              ? 'midiendo…'
-              : `${blinkRate.toFixed(0)} /min`
+            blinkLimit !== null && blinkLimit > 0
+              ? `${blinkCount} / ${blinkLimit}`
+              : blinkCount > 0 ? String(blinkCount) : 'ninguno'
           }
-          hint={
-            blinkPending ? null
-              : blinkRate >= BLINK_RATE_NORMAL ? 'normal'
-              : blinkRate >= BLINK_RATE_LOW ? 'bajo'
-              : 'ausente'
-          }
+          hint={blinkFound ? 'te delató' : null}
         />
 
         <div className="vm-signal-extra">
-          <Signal
-            label="Expresión facial"
-            detected={expression > EXPRESSION_ACTIVE_STD}
-            value={expression.toFixed(4)}
+          <Detector
+            label="Gesto facial"
+            disabled={!detectGestures}
+            found={gestureFound}
+            value={gestureDrift.toFixed(3)}
+            hint={gestureFound ? 'te delató' : null}
           />
-          <Meter value={expression} threshold={EXPRESSION_ACTIVE_STD} />
+          {detectGestures && <Meter value={gestureDrift} threshold={gestureThreshold} />}
         </div>
 
         <div className="vm-signal-extra">
-          <Signal
-            label="Micromovimiento de cabeza"
-            detected={head > HEAD_MOTION_ACTIVE}
+          <Detector
+            label="Micromovimiento"
+            found={headFound}
             value={head.toFixed(4)}
+            hint={headFound ? 'te delató' : null}
           />
           <Meter value={head} threshold={HEAD_MOTION_ACTIVE} />
         </div>
 
-        {isPlaying && detectGestures && (
-          <div className="vm-signal-extra">
-            <Signal
-              label="Gesto facial"
-              detected={gestureDrift <= gestureThreshold}
-              value={gestureDrift.toFixed(3)}
-              hint={gestureDrift > gestureThreshold ? 'infracción' : null}
-            />
-            <Meter value={gestureDrift} threshold={gestureThreshold} />
-          </div>
-        )}
+        <div className="vm-signal-extra">
+          <Detector
+            label="Respiración"
+            disabled={!detectBreathing}
+            found={breathFound}
+            pending={!breathReady}
+            value={
+              !breathReady ? 'midiendo…'
+                : reading?.rateKnown ? `${reading.breathingRate.toFixed(0)} /min`
+                : breathFound ? 'detectada'
+                : 'no detectada'
+            }
+            hint={breathFound ? 'te delató' : null}
+          />
+          {detectBreathing && (
+            <Meter value={breathAmp} threshold={BREATHING_AMPLITUDE_THRESHOLD} />
+          )}
+        </div>
 
-        <Signal
-          label="Respiración"
-          detected={breathing}
-          pending={breathPending}
-          value={
-            breathPending ? 'midiendo…'
-              : breathing ? `${breathRate.toFixed(0)} /min`
-              : 'no detectada'
-          }
-          hint={
-            breathPending || !breathing
-              ? null
-              : `confianza ${(reading.breathingConfidence * 100).toFixed(0)}%`
-          }
-        />
+        <div className="vm-signal-extra">
+          <Detector
+            label="Expresión"
+            found={expression > EXPRESSION_ACTIVE_STD}
+            value={expression.toFixed(4)}
+          />
+          <Meter value={expression} threshold={EXPRESSION_ACTIVE_STD} />
+        </div>
       </div>
 
       <p className="vm-disclaimer">
-        Demostración del enfoque de sensado. No es un dispositivo médico: la
-        ausencia de una señal indica que la cámara no puede verla, lo que no
-        equivale a su ausencia real.
+        Estos mismos detectores, en C.U.I.D.A., avisan cuando una persona deja
+        de dar señales. Es una demostración del enfoque de sensado, no un
+        dispositivo médico.
       </p>
     </div>
   );

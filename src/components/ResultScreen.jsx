@@ -18,8 +18,17 @@ const STATIC_PARTICLES = Array.from({ length: 10 }, (_, i) => ({
  * Victory → green pulse + confetti particles
  * Defeat  → red shake
  */
+const SIGNAL_NAMES = {
+  movement: 'el detector de movimiento',
+  gesture: 'el detector de gestos faciales',
+  blink: 'el detector de parpadeo',
+  breathing: 'el detector de respiración',
+  absent: 'la pérdida de encuadre',
+};
+
 export default function ResultScreen({
   won, onRetry, onBack, freezeSeconds, infractionReason, blinkCount, vitality,
+  detectedSignal,
 }) {
   const particles = won ? STATIC_PARTICLES : [];
 
@@ -62,32 +71,42 @@ export default function ResultScreen({
 
         {/* Headline */}
         <h1 className="result-title">
-          {won ? '¡Lo lograste!' : '¡Te moviste!'}
+          {won ? '¡Nos engañaste!' : 'Te detectamos'}
         </h1>
 
         <p className="result-subtitle">
           {won
-            ? `Aguantaste ${freezeSeconds} segundo${freezeSeconds !== 1 ? 's' : ''} completamente quieto.`
+            ? `${freezeSeconds} segundos sin una sola señal de vida. Reclamá tu premio.`
             : infractionReason
-            ? `Detectado: ${infractionReason}.`
-            : 'El sistema detectó movimiento. Intentalo de nuevo.'}
+            ? `${infractionReason}.`
+            : 'El sistema encontró una señal de vida.'}
         </p>
 
         {/* What the system picked up while the round ran. Blinking is listed
             even though it never costs the round: seeing it counted is the
             point — the same sensing that judges the game is what tells a
             monitor whether someone is still responsive. */}
+        {!won && detectedSignal && (
+          <p className="result-caught">
+            Te delató: <strong>{SIGNAL_NAMES[detectedSignal] ?? detectedSignal}</strong>
+          </p>
+        )}
+
         <div className="result-signals">
           <div className="result-signal">
             <span className="result-signal-value">{blinkCount ?? 0}</span>
-            <span className="result-signal-label">parpadeos detectados</span>
+            <span className="result-signal-label">parpadeos</span>
           </div>
           {vitality?.breathingDetected && (
             <div className="result-signal">
               <span className="result-signal-value">
-                {vitality.breathingRate.toFixed(0)}
+                {vitality.rateKnown && vitality.breathingRate !== null
+                  ? vitality.breathingRate.toFixed(0)
+                  : 'detectada'}
               </span>
-              <span className="result-signal-label">respiraciones / min</span>
+              <span className="result-signal-label">
+                {vitality.rateKnown ? 'respiraciones / min' : 'respiración'}
+              </span>
             </div>
           )}
           {vitality?.label && (

@@ -327,3 +327,10 @@
   .hud-config { display: none; } /* hide config on very small screens */
   .game-layout { margin: -16px -16px -16px; }
 }
+
+.idle-prize {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--accent-yellow);
+}

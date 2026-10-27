@@ -123,13 +123,13 @@
   gap: 9px;
 }
 
-.vm-signal {
+.vm-det {
   display: flex;
   align-items: center;
   gap: 9px;
 }
 
-.vm-signal-dot {
+.vm-det-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -137,11 +137,11 @@
   background: var(--text-muted);
 }
 
-.vm-signal-on  .vm-signal-dot { background: var(--pulse); }
-.vm-signal-off .vm-signal-dot { background: var(--accent-red); }
-.vm-signal-pending .vm-signal-dot { background: var(--text-muted); }
+.vm-det-hidden  .vm-det-dot { background: var(--pulse); }
+.vm-det-found .vm-det-dot { background: var(--accent-red); }
+.vm-det-pending .vm-det-dot { background: var(--text-muted); }
 
-.vm-signal-body {
+.vm-det-body {
   flex: 1;
   display: flex;
   align-items: baseline;
@@ -150,21 +150,21 @@
   min-width: 0;
 }
 
-.vm-signal-label {
+.vm-det-label {
   font-size: 12px;
   color: var(--text-secondary);
 }
 
-.vm-signal-value {
+.vm-det-value {
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.vm-signal-pending .vm-signal-value { color: var(--text-muted); font-weight: 400; }
+.vm-det-pending .vm-det-value { color: var(--text-muted); font-weight: 400; }
 
-.vm-signal-hint {
+.vm-det-hint {
   font-size: 10px;
   color: var(--text-muted);
   white-space: nowrap;
@@ -228,3 +228,33 @@
   z-index: 31;
   max-width: 320px;
 }
+
+
+/* Green = this detector has nothing on you. Red = it found you. */
+.vm-det-hidden .vm-det-dot { background: var(--pulse); }
+.vm-det-found .vm-det-dot {
+  background: var(--accent-red);
+  box-shadow: 0 0 8px var(--accent-red);
+}
+.vm-det-pending .vm-det-dot,
+.vm-det-disabled .vm-det-dot { background: var(--text-muted); }
+.vm-det-disabled { opacity: 0.45; }
+
+.vm-det-found .vm-det-value { color: var(--accent-red); font-weight: 700; }
+.vm-det-hint { color: var(--accent-red); font-weight: 600; }
+
+.vm-count {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(224, 92, 92, 0.18);
+  color: var(--accent-red);
+}
+
+.vm-count-clear {
+  background: rgba(61, 214, 140, 0.18);
+  color: var(--pulse);
+}
+
+.vm-meter-over { background: var(--accent-red); }

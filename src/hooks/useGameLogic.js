@@ -39,8 +39,16 @@ export function useGameLogic() {
   const [sensitivity, setSensitivity] = useState(DEFAULT_SENSITIVITY);
   // Facial gestures are part of the freeze; blinking is involuntary, so it is
   // shown but never penalised unless the operator explicitly turns it on.
+  // Which detectors are armed. Each one that fires gives the player away;
+  // turning one off makes the challenge easier for a given audience.
   const [detectGestures, setDetectGestures] = useState(true);
-  const [penalizeBlink, setPenalizeBlink] = useState(false);
+  const [detectBlink, setDetectBlink] = useState(true);
+  // Breathing is shown in the monitor, but penalising it by default would
+  // make a normal human unable to win a presentation game.
+  const [detectBreathing, setDetectBreathing] = useState(false);
+  // Blinks tolerated before the player is given away. 0 = none.
+  // Allow a few involuntary blinks during the default 20-second round.
+  const [blinkBudget, setBlinkBudget] = useState(3);
 
   // ── Game state ──────────────────────────────────────────────────────────
   const [gameState, setGameState] = useState(GAME_STATE.IDLE);
@@ -62,7 +70,12 @@ export function useGameLogic() {
   const freezeSecondsRef = useRef(freezeSeconds);
   const sensitivityRef = useRef(sensitivity);
   const detectGesturesRef = useRef(detectGestures);
-  const penalizeBlinkRef = useRef(penalizeBlink);
+  const detectBlinkRef = useRef(detectBlink);
+  const detectBreathingRef = useRef(detectBreathing);
+  const blinkBudgetRef = useRef(blinkBudget);
+  // Blink tally captured when the round starts, so only this round counts.
+  const blinkBaseRef = useRef(0);
+  const detectedSignalRef = useRef(null);
   const timeLeftRef = useRef(freezeSeconds);
   const latestLandmarksRef = useRef(null);
   const isAnchorSetRef = useRef(false);
@@ -91,8 +104,24 @@ export function useGameLogic() {
   }, [detectGestures]);
 
   useEffect(() => {
-    penalizeBlinkRef.current = penalizeBlink;
-  }, [penalizeBlink]);
+    blinkBudgetRef.current = blinkBudget;
+  }, [blinkBudget]);
+
+  useEffect(() => {
+    detectBlinkRef.current = detectBlink;
+  }, [detectBlink]);
+
+  useEffect(() => {
+    detectBreathingRef.current = detectBreathing;
+  }, [detectBreathing]);
+
+  /** Blinks tolerated this round, or null when blinking is not watched. */
+  const _blinkLimit = useCallback(() => {
+    if (!detectBlinkRef.current) return null;
+    const configured = blinkBudgetRef.current;
+    if (configured === null || configured === undefined) return null;
+    return Math.max(0, configured);
+  }, []);
 
   const _setState = useCallback((s) => {
     gameStateRef.current = s;
@@ -134,8 +163,12 @@ export function useGameLogic() {
     breachFramesRef.current = 0;
     gestureFramesRef.current = 0;
     isFaceAnchorSetRef.current = false;
+    detectedSignalRef.current = null;
+    blinkCountRef.current = 0;
     faceAnalyzerRef.current.reset();
     analyzerRef.current.reset();
+    vitalityRef.current.reset();
+    setVitality(null);
   }, [_setState]);
 
   /** Called when camera is deactivated */
@@ -147,8 +180,12 @@ export function useGameLogic() {
     breachFramesRef.current = 0;
     gestureFramesRef.current = 0;
     isFaceAnchorSetRef.current = false;
+    detectedSignalRef.current = null;
+    blinkCountRef.current = 0;
     faceAnalyzerRef.current.reset();
     analyzerRef.current.reset();
+    vitalityRef.current.reset();
+    setVitality(null);
   }, [_setState, _stopTimer]);
 
   /** Admin / Player presses "Empezar" */
@@ -161,7 +198,11 @@ export function useGameLogic() {
     breachFramesRef.current = 0;
     gestureFramesRef.current = 0;
     isFaceAnchorSetRef.current = false;
+    detectedSignalRef.current = null;
+    blinkCountRef.current = 0;
     faceAnalyzerRef.current.reset();
+    vitalityRef.current.reset();
+    setVitality(null);
 
     // Anchor the starting freeze posture if landmarks are already available
     if (latestLandmarksRef.current) {
@@ -178,8 +219,12 @@ export function useGameLogic() {
     _setState(GAME_STATE.PLAYING);
   }, [_setState, _startTimer]);
 
-  /** End the round with a named reason. Shared by body and face. */
-  const _lose = useCallback((reason) => {
+  /**
+   * The system spotted a sign of life: the round ends and the player loses.
+   * Shared by every detector so the reason is always recorded the same way.
+   */
+  const _detected = useCallback((reason, signal = null) => {
+    detectedSignalRef.current = signal;
     _stopTimer();
     setInfractionReason(reason);
     _setState(GAME_STATE.LOST);
@@ -198,6 +243,12 @@ export function useGameLogic() {
     latestBlendshapesRef.current = blendshapes;
     const state = gameStateRef.current;
 
+    // Face inference may run to keep the camera preview responsive, but the
+    // game detector is disarmed until the player presses "Empezar". In
+    // particular, do not let pre-round blinks or expressions contaminate the
+    // round baseline.
+    if (state !== GAME_STATE.PLAYING) return;
+
     const vitals = vitalityRef.current.update({
       blendshapes,
       faceLandmarks: landmarks,
@@ -206,22 +257,40 @@ export function useGameLogic() {
     });
     setVitality(vitals);
 
-    if (state !== GAME_STATE.PLAYING) return;
-
     if (!isFaceAnchorSetRef.current && blendshapes) {
       faceAnalyzerRef.current.setAnchor(blendshapes);
       isFaceAnchorSetRef.current = true;
+      blinkBaseRef.current = vitals.totalBlinks ?? 0;
       blinkCountRef.current = 0;
     }
 
     const gesture = faceAnalyzerRef.current.update(blendshapes);
     setGestureDrift(gesture.drift);
 
-    // Blinking is counted for display whether or not it costs the round.
-    if (vitals.blinkCount !== undefined) blinkCountRef.current = vitals.blinkCount;
+    // Blinks are always counted and shown; whether they cost the round is
+    // a separate decision.
+    const roundBlinks = Math.max(0, (vitals.totalBlinks ?? 0) - blinkBaseRef.current);
+    blinkCountRef.current = roundBlinks;
 
-    if (penalizeBlinkRef.current && vitals.lastBlinkAgo !== null && vitals.lastBlinkAgo < 120) {
-      _lose('Parpadeaste');
+    const limit = _blinkLimit();
+    if (limit !== null && roundBlinks > limit) {
+      _detected(
+        limit === 0
+          ? 'Parpadeaste'
+          : `Parpadeaste ${roundBlinks} veces`,
+        'blink'
+      );
+      return;
+    }
+
+    // Breathing is the hardest sign to suppress and the one the system is
+    // proudest of. Presence answers in about one cycle; the rate, once the
+    // long window has filled, names the number out loud.
+    if (detectBreathingRef.current && vitals.breathingDetected) {
+      const detail = vitals.rateKnown
+        ? `Respiración detectada (${vitals.breathingRate.toFixed(0)}/min)`
+        : 'Respiración detectada';
+      _detected(detail, 'breathing');
       return;
     }
 
@@ -231,12 +300,12 @@ export function useGameLogic() {
     if (gesture.drift > gestureThreshold) {
       gestureFramesRef.current += 1;
       if (gestureFramesRef.current >= GESTURE_CONFIRM_FRAMES) {
-        _lose(gesture.reason || 'Gesto facial detectado');
+        _detected(gesture.reason || 'Gesto facial detectado', 'gesture');
       }
     } else {
       gestureFramesRef.current = 0;
     }
-  }, [_lose]);
+  }, [_detected, _blinkLimit]);
 
   /**
    * Called every frame with fresh landmarks (null when no pose was found).
@@ -262,7 +331,7 @@ export function useGameLogic() {
     if (state === GAME_STATE.PLAYING) {
       if (!hasPose) {
         // Pose missing for longer than the grace window: the player really left.
-        _lose("La persona salió del encuadre de la cámara.");
+        _detected('La persona salió del encuadre de la cámara.', 'absent');
         return;
       }
 
@@ -312,27 +381,24 @@ export function useGameLogic() {
 
           if (breachFramesRef.current >= BREACH_CONFIRM_FRAMES) {
             const breachReason = hasDynamicBreach ? reason : anchorReason;
-            _lose(breachReason || "Movimiento detectado");
+            _detected(breachReason || 'Movimiento detectado', 'movement');
           }
         } else {
           breachFramesRef.current = 0;
         }
       }
     } else if (state === GAME_STATE.DETECTING || state === GAME_STATE.READY) {
-      // Detection/prep phase: track presence and give live movement feedback
+      // Before "Empezar", only verify that a person is present. Do not feed
+      // the movement analyzer: its history and calibration belong to a round.
       if (state === GAME_STATE.DETECTING && landmarks) {
         _setState(GAME_STATE.READY);
       } else if (state === GAME_STATE.READY && !hasPose) {
         _setState(GAME_STATE.DETECTING);
         analyzerRef.current.reset();
       }
-
-      if (landmarks) {
-        const { score } = analyzerRef.current.update(landmarks);
-        setMovementScore(score);
-      }
+      setMovementScore(0);
     }
-  }, [_setState, _stopTimer]);
+  }, [_setState, _stopTimer, _detected]);
 
   /** Reset for another attempt */
   const reset = useCallback(() => {
@@ -343,7 +409,11 @@ export function useGameLogic() {
     breachFramesRef.current = 0;
     gestureFramesRef.current = 0;
     isFaceAnchorSetRef.current = false;
+    detectedSignalRef.current = null;
+    blinkCountRef.current = 0;
     faceAnalyzerRef.current.reset();
+    vitalityRef.current.reset();
+    setVitality(null);
     setMovementScore(0);
     setInfractionReason(null);
     timeLeftRef.current = freezeSecondsRef.current;
@@ -359,7 +429,11 @@ export function useGameLogic() {
     breachFramesRef.current = 0;
     gestureFramesRef.current = 0;
     isFaceAnchorSetRef.current = false;
+    detectedSignalRef.current = null;
+    blinkCountRef.current = 0;
     faceAnalyzerRef.current.reset();
+    vitalityRef.current.reset();
+    setVitality(null);
     setMovementScore(0);
     setInfractionReason(null);
     _setState(GAME_STATE.IDLE);
@@ -384,8 +458,14 @@ export function useGameLogic() {
     blinkCount: blinkCountRef.current,
     detectGestures,
     setDetectGestures,
-    penalizeBlink,
-    setPenalizeBlink,
+    blinkBudget,
+    setBlinkBudget,
+    blinkLimit: _blinkLimit(),
+    detectBlink,
+    setDetectBlink,
+    detectBreathing,
+    setDetectBreathing,
+    detectedSignal: detectedSignalRef.current,
     // Config
     freezeSeconds,
     setFreezeSeconds,
