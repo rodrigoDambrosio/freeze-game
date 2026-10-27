@@ -21,8 +21,23 @@ import {
   LEGS_LANDMARK_INDICES,
   ZONE_WEIGHTS,
   MIN_LANDMARK_VISIBILITY,
+  REQUIRED_LANDMARK_INDICES,
+  ANCHOR_MIN_VISIBILITY,
+  LANDMARK_SMOOTHING,
+  ARM_LANDMARK_SMOOTHING,
+  CONFIDENCE_LOW_VISIBILITY,
+  CONFIDENCE_HIGH_VISIBILITY,
   MOVEMENT_WINDOW_FRAMES,
 } from './constants.js';
+
+const ARMS_INDEX_SET = new Set(ARMS_LANDMARK_INDICES);
+
+/**
+ * Restrict a zone's landmark indices to the tracked ones (all of them when `tracked` is null).
+ */
+function trackedOnly(indices, tracked) {
+  return tracked ? indices.filter((idx) => tracked.has(idx)) : indices;
+}
 
 /**
  * Calculate Euclidean displacement between two landmark points.
@@ -35,109 +50,148 @@ function pointDistance(a, b) {
 }
 
 /**
+ * Whether a landmark can be trusted for tracking: visible enough and inside the image.
+ * Points outside the image (e.g. elbows or hips of a player seated close to the webcam)
+ * are guesses by the model and jitter a lot from frame to frame.
+ */
+function isLandmarkUsable(lm) {
+  return !!lm && lm.visibility >= MIN_LANDMARK_VISIBILITY &&
+    lm.x >= 0 && lm.x <= 1 && lm.y >= 0 && lm.y <= 1;
+}
+
+/**
+ * How well the model can estimate a landmark, from 0 (a guess, or outside the image)
+ * to 1 (clearly seen), ramping with visibility instead of a hard cutoff.
+ */
+export function landmarkConfidence(lm) {
+  if (!lm || lm.x < 0 || lm.x > 1 || lm.y < 0 || lm.y > 1) return 0;
+  const ramp = (lm.visibility - CONFIDENCE_LOW_VISIBILITY) / (CONFIDENCE_HIGH_VISIBILITY - CONFIDENCE_LOW_VISIBILITY);
+  return Math.max(0, Math.min(1, ramp));
+}
+
+/**
  * Calculate body scale factor based on shoulder distance.
  * Normalizes sensitivities whether the player is close or far from the webcam.
  * Reference shoulder distance = 0.22 (typical webcam torso view).
+ * Returns `fallback` when the shoulders can't be measured.
  */
-export function calculateBodyScale(landmarks) {
-  if (!landmarks) return 1.0;
+export function calculateBodyScale(landmarks, fallback = 1.0) {
+  if (!landmarks) return fallback;
   const ls = landmarks[11];
   const rs = landmarks[12];
-  if (!ls || !rs || ls.visibility < MIN_LANDMARK_VISIBILITY || rs.visibility < MIN_LANDMARK_VISIBILITY) {
-    return 1.0;
-  }
+  if (!isLandmarkUsable(ls) || !isLandmarkUsable(rs)) return fallback;
   const dist = pointDistance(ls, rs);
-  if (dist < 0.05) return 1.0;
+  if (dist < 0.05) return fallback;
   // Normalize scale: larger person -> larger scale factor -> divide displacement by scale
+  // (upper bound fits a player seated close to a laptop webcam, shoulders ~0.5-0.65 wide)
   const scale = dist / 0.22;
-  return Math.max(0.6, Math.min(1.8, scale));
+  return Math.max(0.6, Math.min(3.0, scale));
 }
 
 /**
  * Calculate average displacement and max displacement for a specific anatomical zone.
+ * Each point counts in proportion to how well the model sees it in both frames.
  */
 export function calculateZoneDisplacement(current, previous, indices, scale = 1.0) {
   if (!current || !previous) return { displacement: 0, maxDisplacement: 0, validCount: 0 };
 
   let totalDist = 0;
+  let totalWeight = 0;
   let maxDist = 0;
   let validCount = 0;
 
   for (const idx of indices) {
     const curr = current[idx];
     const prev = previous[idx];
-    if (!curr || !prev) continue;
+    const weight = Math.min(landmarkConfidence(curr), landmarkConfidence(prev));
+    if (weight === 0) continue;
 
-    if (curr.visibility < MIN_LANDMARK_VISIBILITY || prev.visibility < MIN_LANDMARK_VISIBILITY) {
-      continue;
-    }
-
-    const dist = pointDistance(curr, prev) / scale;
+    const dist = weight * pointDistance(curr, prev) / scale;
     totalDist += dist;
+    totalWeight += weight;
     if (dist > maxDist) maxDist = dist;
     validCount++;
   }
 
   if (validCount === 0) return { displacement: 0, maxDisplacement: 0, validCount: 0 };
   return {
-    displacement: totalDist / validCount,
+    displacement: totalDist / totalWeight,
     maxDisplacement: maxDist,
     validCount,
   };
 }
 
 /**
- * Calculate the centroid (center of mass) of specific landmarks (e.g. torso).
+ * Calculate how far the centroid (center of mass) of specific landmarks (e.g. torso) moved.
+ * Only landmarks visible in both frames are used, so a landmark flickering in or out of
+ * visibility (e.g. hips at the frame edge) doesn't shift the centroid and fake a movement.
  */
-export function calculateCentroid(landmarks, indices) {
-  if (!landmarks) return null;
-  let sumX = 0;
-  let sumY = 0;
-  let count = 0;
+export function calculateCentroidDisplacement(current, previous, indices, scale = 1.0) {
+  if (!current || !previous) return 0;
+  let sumDx = 0;
+  let sumDy = 0;
+  let totalWeight = 0;
 
   for (const idx of indices) {
-    const lm = landmarks[idx];
-    if (!lm || lm.visibility < MIN_LANDMARK_VISIBILITY) continue;
-    sumX += lm.x;
-    sumY += lm.y;
-    count++;
+    const curr = current[idx];
+    const prev = previous[idx];
+    const weight = Math.min(landmarkConfidence(curr), landmarkConfidence(prev));
+    if (weight === 0) continue;
+    sumDx += weight * (curr.x - prev.x);
+    sumDy += weight * (curr.y - prev.y);
+    totalWeight += weight;
   }
 
-  if (count === 0) return null;
-  return { x: sumX / count, y: sumY / count };
+  if (totalWeight === 0) return 0;
+  return Math.sqrt(sumDx * sumDx + sumDy * sumDy) / totalWeight / scale;
+}
+
+/**
+ * Whether all the given landmarks are visible inside the image.
+ */
+function areLandmarksVisible(landmarks, indices) {
+  if (!landmarks) return false;
+  return indices.every((idx) => isLandmarkUsable(landmarks[idx]));
+}
+
+/**
+ * Whether the player is framed well enough to play: both shoulders visible.
+ * Hips aren't required, so a player seated in front of the webcam is detected too.
+ */
+export function isPlayerInFrame(landmarks) {
+  return areLandmarksVisible(landmarks, REQUIRED_LANDMARK_INDICES);
 }
 
 /**
  * Multi-zone movement analysis between two frames.
  * Returns the peak weighted movement score and the identifying infraction zone.
  */
-export function analyzeMovement(current, previous) {
+export function analyzeMovement(current, previous, scale = calculateBodyScale(current), tracked = null) {
   if (!current || !previous || current.length === 0 || previous.length === 0) {
     return { score: 0, activeZone: null, zoneScores: {} };
   }
 
-  const scale = calculateBodyScale(current);
+  const head = trackedOnly(HEAD_LANDMARK_INDICES, tracked);
+  const torso = trackedOnly(TORSO_LANDMARK_INDICES, tracked);
+  const arms = trackedOnly(ARMS_LANDMARK_INDICES, tracked);
+  const legs = trackedOnly(LEGS_LANDMARK_INDICES, tracked);
 
   // 1. Head movement
-  const headData = calculateZoneDisplacement(current, previous, HEAD_LANDMARK_INDICES, scale);
+  const headData = calculateZoneDisplacement(current, previous, head, scale);
   const headScore = headData.displacement * ZONE_WEIGHTS.head;
 
   // 2. Torso landmark displacement & Torso Centroid translation
-  const torsoData = calculateZoneDisplacement(current, previous, TORSO_LANDMARK_INDICES, scale);
-  const currCentroid = calculateCentroid(current, TORSO_LANDMARK_INDICES);
-  const prevCentroid = calculateCentroid(previous, TORSO_LANDMARK_INDICES);
-  let centroidDist = 0;
-  if (currCentroid && prevCentroid) {
-    centroidDist = (pointDistance(currCentroid, prevCentroid) / scale);
-  }
+  const torsoData = calculateZoneDisplacement(current, previous, torso, scale);
+  const centroidDist = calculateCentroidDisplacement(current, previous, torso, scale);
   const torsoScore = Math.max(torsoData.displacement, centroidDist) * ZONE_WEIGHTS.torso;
 
-  // 3. Arms movement
-  const armsData = calculateZoneDisplacement(current, previous, ARMS_LANDMARK_INDICES, scale);
-  const armsScore = armsData.displacement * ZONE_WEIGHTS.arms;
+  // 3. Arms movement: the point that moved most, since averaging both elbows and wrists
+  // would dilute one hand moving to a quarter of its displacement
+  const armsData = calculateZoneDisplacement(current, previous, arms, scale);
+  const armsScore = armsData.maxDisplacement * ZONE_WEIGHTS.arms;
 
   // 4. Legs movement
-  const legsData = calculateZoneDisplacement(current, previous, LEGS_LANDMARK_INDICES, scale);
+  const legsData = calculateZoneDisplacement(current, previous, legs, scale);
   const legsScore = legsData.displacement * ZONE_WEIGHTS.legs;
 
   // Find peak movement zone
@@ -169,26 +223,21 @@ export function analyzeMovement(current, previous) {
  * Calculate static drift from the anchor (initial freeze pose).
  * Detects slow drift/creeping movements that frame-by-frame diffs might miss.
  */
-export function calculateAnchorDrift(current, anchor) {
+export function calculateAnchorDrift(current, anchor, scale = calculateBodyScale(current), tracked = null) {
   if (!current || !anchor) return { drift: 0, reason: null };
 
-  const scale = calculateBodyScale(current);
-
   // Head drift from start
-  const headData = calculateZoneDisplacement(current, anchor, HEAD_LANDMARK_INDICES, scale);
+  const headData = calculateZoneDisplacement(current, anchor, trackedOnly(HEAD_LANDMARK_INDICES, tracked), scale);
   const headDrift = headData.displacement * ZONE_WEIGHTS.head;
 
   // Body/Torso centroid drift from start
-  const currCentroid = calculateCentroid(current, TORSO_LANDMARK_INDICES);
-  const anchorCentroid = calculateCentroid(anchor, TORSO_LANDMARK_INDICES);
-  let centroidDrift = 0;
-  if (currCentroid && anchorCentroid) {
-    centroidDrift = (pointDistance(currCentroid, anchorCentroid) / scale) * ZONE_WEIGHTS.torso;
-  }
+  const centroidDrift = calculateCentroidDisplacement(
+    current, anchor, trackedOnly(TORSO_LANDMARK_INDICES, tracked), scale
+  ) * ZONE_WEIGHTS.torso;
 
-  // Arms drift from start
-  const armsData = calculateZoneDisplacement(current, anchor, ARMS_LANDMARK_INDICES, scale);
-  const armsDrift = armsData.displacement * ZONE_WEIGHTS.arms;
+  // Arms drift from start (point that moved most, as in analyzeMovement)
+  const armsData = calculateZoneDisplacement(current, anchor, trackedOnly(ARMS_LANDMARK_INDICES, tracked), scale);
+  const armsDrift = armsData.maxDisplacement * ZONE_WEIGHTS.arms;
 
   const drifts = [
     { zone: 'head', name: 'Movimiento de cabeza (postura cambiada)', drift: headDrift },
@@ -205,24 +254,99 @@ export function calculateAnchorDrift(current, anchor) {
 }
 
 /**
+ * LandmarkSmoother
+ *
+ * Smooths landmark positions and visibility over time to filter out the model's per-frame
+ * jitter (the Tasks API, unlike the legacy MediaPipe Pose solution, doesn't smooth them).
+ * Positions follow each new reading in proportion to how well the model sees the point,
+ * so a point it can't estimate holds its last reliable position instead of jumping around.
+ * Arms get stronger smoothing: wrists and elbows are the model's noisiest points.
+ */
+export class LandmarkSmoother {
+  constructor() {
+    this._smoothed = null;
+  }
+
+  /**
+   * Feed a new frame's landmarks (null when no person is detected, which restarts smoothing).
+   */
+  smooth(landmarks) {
+    if (!landmarks) {
+      this._smoothed = null;
+      return null;
+    }
+    const prev = this._smoothed;
+    this._smoothed = landmarks.map((lm, i) => {
+      const p = prev && prev[i];
+      if (!p || !lm) return lm;
+      const k = ARMS_INDEX_SET.has(i) ? ARM_LANDMARK_SMOOTHING : LANDMARK_SMOOTHING;
+      // Guessed points still drift slowly toward the model's estimate
+      const kPosition = k * Math.max(landmarkConfidence(lm), 0.1);
+      return {
+        ...lm,
+        x: p.x + kPosition * (lm.x - p.x),
+        y: p.y + kPosition * (lm.y - p.y),
+        visibility: p.visibility + k * (lm.visibility - p.visibility),
+      };
+    });
+    return this._smoothed;
+  }
+
+  reset() {
+    this._smoothed = null;
+  }
+}
+
+/**
  * MovementAnalyzer
  *
  * Stateful class that maintains a temporal sliding window buffer of landmarks
- * and compares against an anchor freeze pose.
+ * and compares against an anchor freeze pose. Expects landmarks already smoothed
+ * by a LandmarkSmoother.
  */
 export class MovementAnalyzer {
   constructor(windowFrames = MOVEMENT_WINDOW_FRAMES) {
     this._windowFrames = windowFrames;
     this._history = [];
     this._anchorLandmarks = null;
+    this._trackedIndices = null;
+    this._requiredIndices = REQUIRED_LANDMARK_INDICES;
     this._recentScores = [];
+    this._scale = 1.0;
   }
 
   /**
    * Set the initial freeze pose when the game starts.
    */
-  setAnchor(landmarks) {
-    this._anchorLandmarks = landmarks ? JSON.parse(JSON.stringify(landmarks)) : null;
+  setAnchor(pose) {
+    this._anchorLandmarks = pose ? JSON.parse(JSON.stringify(pose)) : null;
+    this._scale = calculateBodyScale(pose, this._scale);
+
+    // Only body parts clearly visible in the freeze pose are judged during play, so
+    // half-hidden ones (e.g. hands behind a desk) with guessed, jittery positions are
+    // ignored. The shoulders are always judged. Torso parts among them must stay in view.
+    if (!pose) {
+      this._trackedIndices = null;
+      this._requiredIndices = REQUIRED_LANDMARK_INDICES;
+      return;
+    }
+    const clearlyVisible = TRACKED_LANDMARK_INDICES.filter(
+      (idx) => isLandmarkUsable(pose[idx]) && pose[idx].visibility >= ANCHOR_MIN_VISIBILITY
+    );
+    this._trackedIndices = new Set([...REQUIRED_LANDMARK_INDICES, ...clearlyVisible]);
+    this._requiredIndices = [...new Set([
+      ...REQUIRED_LANDMARK_INDICES,
+      ...clearlyVisible.filter((idx) => TORSO_LANDMARK_INDICES.includes(idx)),
+    ])];
+  }
+
+  /**
+   * Whether the torso landmarks required by the freeze pose are still visible.
+   * Adapts to the framing: hips hidden at the start (seated player) aren't required,
+   * hips visible at the start (standing player) must stay in view.
+   */
+  isTorsoInView(landmarks) {
+    return areLandmarksVisible(landmarks, this._requiredIndices);
   }
 
   /**
@@ -232,6 +356,9 @@ export class MovementAnalyzer {
     if (!landmarks || landmarks.length === 0) {
       return { score: 0, anchorDrift: 0, isValid: false, reason: null };
     }
+
+    // Keep the last measured body scale when a shoulder briefly drops out of view
+    this._scale = calculateBodyScale(landmarks, this._scale);
 
     this._history.push(landmarks);
     if (this._history.length > this._windowFrames) {
@@ -246,8 +373,8 @@ export class MovementAnalyzer {
     const referenceFrame = this._history[0];
     const immediatePrevFrame = this._history[this._history.length - 2];
 
-    const windowAnalysis = analyzeMovement(landmarks, referenceFrame);
-    const immediateAnalysis = analyzeMovement(landmarks, immediatePrevFrame);
+    const windowAnalysis = analyzeMovement(landmarks, referenceFrame, this._scale, this._trackedIndices);
+    const immediateAnalysis = analyzeMovement(landmarks, immediatePrevFrame, this._scale, this._trackedIndices);
 
     // Dynamic movement score: peak of smoothed window displacement or sudden spike
     const rawScore = Math.max(windowAnalysis.score, immediateAnalysis.score);
@@ -263,7 +390,7 @@ export class MovementAnalyzer {
     let anchorDrift = 0;
     let anchorReason = null;
     if (this._anchorLandmarks) {
-      const driftResult = calculateAnchorDrift(landmarks, this._anchorLandmarks);
+      const driftResult = calculateAnchorDrift(landmarks, this._anchorLandmarks, this._scale, this._trackedIndices);
       anchorDrift = driftResult.drift;
       anchorReason = driftResult.reason;
     }
@@ -279,10 +406,15 @@ export class MovementAnalyzer {
     };
   }
 
+  /**
+   * Reset the round state. The body scale is kept: it describes the player, not the round.
+   */
   reset() {
     this._history = [];
     this._recentScores = [];
     this._anchorLandmarks = null;
+    this._trackedIndices = null;
+    this._requiredIndices = REQUIRED_LANDMARK_INDICES;
   }
 }
 
@@ -300,7 +432,7 @@ export function calculateMovementScore(current, previous) {
 export function getLandmarkBoundingBox(landmarks, canvasW, canvasH, padding = 24) {
   if (!landmarks || landmarks.length === 0) return null;
 
-  const visible = landmarks.filter((lm) => lm && lm.visibility > 0.35);
+  const visible = landmarks.filter((lm) => landmarkConfidence(lm) > 0);
   if (visible.length < 3) return null;
 
   const xs = visible.map((lm) => lm.x * canvasW);
@@ -339,15 +471,15 @@ export function drawSkeleton(ctx, landmarks, W, H, color = '#5b9cf5') {
 
   ctx.save();
   ctx.lineWidth = 2.5;
-  ctx.globalAlpha = 0.75;
 
-  // Draw bone lines
+  // Draw bone lines, fading the ones the model can't see well
   for (const [a, b] of CONNECTIONS) {
     const lmA = landmarks[a];
     const lmB = landmarks[b];
-    if (!lmA || !lmB) continue;
-    if (lmA.visibility < 0.35 || lmB.visibility < 0.35) continue;
+    const confidence = Math.min(landmarkConfidence(lmA), landmarkConfidence(lmB));
+    if (confidence === 0) continue;
 
+    ctx.globalAlpha = 0.75 * confidence;
     ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.moveTo(lmA.x * W, lmA.y * H);
@@ -358,7 +490,9 @@ export function drawSkeleton(ctx, landmarks, W, H, color = '#5b9cf5') {
   // Draw keypoint dots
   for (const idx of TRACKED_LANDMARK_INDICES) {
     const lm = landmarks[idx];
-    if (!lm || lm.visibility < 0.35) continue;
+    const confidence = landmarkConfidence(lm);
+    if (confidence === 0) continue;
+    ctx.globalAlpha = 0.75 * confidence;
     ctx.beginPath();
     ctx.fillStyle = color;
     // Slightly larger dots for head (0, 7, 8) and core (11, 12)

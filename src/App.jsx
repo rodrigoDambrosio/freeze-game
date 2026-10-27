@@ -3,6 +3,7 @@ import { useCamera } from './hooks/useCamera.js';
 import { usePoseDetection } from './hooks/usePoseDetection.js';
 import { useGameLogic, GAME_STATE } from './hooks/useGameLogic.js';
 import { SENSITIVITY_LEVELS } from './lib/constants.js';
+import { isPlayerInFrame } from './lib/poseAnalyzer.js';
 import Header from './components/Header.jsx';
 import CameraView from './components/CameraView.jsx';
 import Timer from './components/Timer.jsx';
@@ -32,8 +33,7 @@ export default function App() {
   // ── Wire pose detections → game logic ────────────────────────────────────
   useEffect(() => {
     if (!pose.isRunning) return;
-    const hasPose = !!pose.landmarks;
-    game.onPoseDetected(hasPose);
+    game.onPoseDetected(isPlayerInFrame(pose.landmarks));
     game.onFrame(pose.landmarks);
   }, [pose.landmarks, pose.isRunning]); // eslint-disable-line
 
@@ -185,7 +185,11 @@ export default function App() {
                           <>
                             <ScanIcon />
                             <p>Colocate frente a la cámara</p>
-                            <p className="instruction-sub">El sistema te detectará automáticamente</p>
+                            <p className="instruction-sub">
+                              {pose.landmarks
+                                ? 'Ubicate de frente, con los dos hombros a la vista'
+                                : 'El sistema te detectará automáticamente'}
+                            </p>
                           </>
                         )}
                         {game.gameState === GAME_STATE.READY && (

@@ -11,12 +11,14 @@ import { PoseLandmarker } from '@mediapipe/tasks-vision';
 import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url';
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url';
 import { MEDIAPIPE_MODEL_URL, MIN_POSE_CONFIDENCE } from '../lib/constants.js';
+import { LandmarkSmoother } from '../lib/poseAnalyzer.js';
 
 export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
   const landmarkerRef = useRef(null);
   const rafRef = useRef(null);
   const lastVideoTimeRef = useRef(-1);
   const lastTimestampRef = useRef(0);
+  const smootherRef = useRef(new LandmarkSmoother());
 
   const [landmarks, setLandmarks] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,7 +95,8 @@ export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
           lastTimestampRef.current = now;
           try {
             const result = landmarker.detectForVideo(video, now);
-            const lms = result.landmarks?.[0] ?? null; // first (most prominent) person
+            // First (most prominent) person, smoothed for both display and movement analysis
+            const lms = smootherRef.current.smooth(result.landmarks?.[0] ?? null);
             setLandmarks(lms);
 
             if (onFrameRef.current) {
@@ -118,6 +121,7 @@ export function usePoseDetection(videoRef, canvasRef, isVideoReady) {
     }
     setIsRunning(false);
     setLandmarks(null);
+    smootherRef.current.reset();
   }, []);
 
   // ── Auto-start when video and model are ready ───────────────────────────

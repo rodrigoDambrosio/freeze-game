@@ -6,23 +6,28 @@ export const MAX_FREEZE_SECONDS = 30;
 // Sensitivity levels → movement thresholds (normalized coords 0..1)
 // dynamic: frame-window velocity threshold
 // anchorDrift: maximum deviation from initial freeze pose
+// visibilityGraceMs: how long the torso may be out of view (tracking dropout,
+//   partial occlusion) before it counts as leaving the frame
 export const SENSITIVITY_LEVELS = {
   low: {
     label: 'Baja',
     threshold: 0.022,
     anchorThreshold: 0.050,
+    visibilityGraceMs: 1000,
     description: 'Tolerante — pequeños movimientos no penalizan',
   },
   medium: {
     label: 'Media',
     threshold: 0.014,
     anchorThreshold: 0.035,
+    visibilityGraceMs: 600,
     description: 'Balanceado — movimiento claro penaliza',
   },
   high: {
     label: 'Alta',
     threshold: 0.008,
     anchorThreshold: 0.022,
+    visibilityGraceMs: 300,
     description: 'Estricto — cualquier movimiento penaliza',
   },
 };
@@ -60,11 +65,31 @@ export const ZONE_WEIGHTS = {
 // Window size for short-term velocity calculation (frames, ~150ms at 30fps)
 export const MOVEMENT_WINDOW_FRAMES = 5;
 
+// Landmark smoothing against model jitter (0..1): lower = smoother but slower to react;
+// 1 = no smoothing. Arms get more: wrists and elbows are the model's noisiest points
+export const LANDMARK_SMOOTHING = 0.5;
+export const ARM_LANDMARK_SMOOTHING = 0.25;
+
 // Minimum pose confidence to consider detection valid
 export const MIN_POSE_CONFIDENCE = 0.55;
 
-// Minimum landmark visibility to include it in movement calculation
-export const MIN_LANDMARK_VISIBILITY = 0.45;
+// Minimum landmark visibility to consider a point present (shoulders in frame, torso in view)
+export const MIN_LANDMARK_VISIBILITY = 0.65;
+
+// How well the model can estimate a point, from its visibility: below LOW it's a guess
+// (e.g. a hand behind a desk) and is ignored, above HIGH it's clearly seen, in between it
+// counts proportionally — both in movement detection and in how fast its smoothed position
+// follows new readings — instead of a hard in/out cutoff
+export const CONFIDENCE_LOW_VISIBILITY = 0.5;
+export const CONFIDENCE_HIGH_VISIBILITY = 0.9;
+
+// Landmarks that must be visible to play: both shoulders, seen whether standing or seated
+export const REQUIRED_LANDMARK_INDICES = [11, 12];
+
+// Only body parts at least this visible in the starting freeze pose are judged during
+// play: half-hidden ones (e.g. hands behind a desk) are ignored for the round. Torso parts
+// among them must stay in view; hips hidden at the start (player seated) aren't required.
+export const ANCHOR_MIN_VISIBILITY = 0.75;
 
 // MediaPipe model, served locally from public/models (works offline)
 export const MEDIAPIPE_MODEL_URL = '/models/pose_landmarker_lite.task';

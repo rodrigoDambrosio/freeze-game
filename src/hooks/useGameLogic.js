@@ -42,6 +42,7 @@ export function useGameLogic() {
   // ── Internal refs (avoid closure staleness) ─────────────────────────────
   const gameStateRef = useRef(GAME_STATE.IDLE);
   const timerIntervalRef = useRef(null);
+  const visibilityTimeoutRef = useRef(null);
   const analyzerRef = useRef(new MovementAnalyzer());
   const freezeSecondsRef = useRef(freezeSeconds);
   const sensitivityRef = useRef(sensitivity);
@@ -83,12 +84,27 @@ export function useGameLogic() {
     }, 1000);
   }, [_setState]);
 
+  const _clearVisibilityTimeout = useCallback(() => {
+    if (visibilityTimeoutRef.current) {
+      clearTimeout(visibilityTimeoutRef.current);
+      visibilityTimeoutRef.current = null;
+    }
+  }, []);
+
   const _stopTimer = useCallback(() => {
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-  }, []);
+    _clearVisibilityTimeout();
+  }, [_clearVisibilityTimeout]);
+
+  const _lose = useCallback((reason) => {
+    _stopTimer();
+    setInfractionReason(reason);
+    _setState(GAME_STATE.LOST);
+    analyzerRef.current.reset();
+  }, [_setState, _stopTimer]);
 
   // ── Public game actions ─────────────────────────────────────────────────
 
@@ -141,14 +157,23 @@ export function useGameLogic() {
     const state = gameStateRef.current;
 
     if (state === GAME_STATE.PLAYING) {
-      if (!landmarks) {
-        // Player completely left the frame
-        _stopTimer();
-        setInfractionReason('La persona salió del encuadre de la cámara.');
-        _setState(GAME_STATE.LOST);
-        analyzerRef.current.reset();
-        return;
+      if (analyzerRef.current.isTorsoInView(landmarks)) {
+        _clearVisibilityTimeout();
+      } else if (!visibilityTimeoutRef.current) {
+        // Torso (partly) out of view: allow a short grace period for tracking dropouts
+        // before counting it as leaving the frame. A timeout is needed because onFrame
+        // isn't called again while landmarks stay null.
+        visibilityTimeoutRef.current = setTimeout(() => {
+          visibilityTimeoutRef.current = null;
+          if (gameStateRef.current !== GAME_STATE.PLAYING) return;
+          _lose(latestLandmarksRef.current
+            ? 'Parte del torso salió del encuadre de la cámara.'
+            : 'La persona salió del encuadre de la cámara.');
+        }, SENSITIVITY_LEVELS[sensitivityRef.current].visibilityGraceMs);
       }
+
+      // Nothing to analyze while the player is completely out of frame
+      if (!landmarks) return;
 
       // If anchor wasn't set yet during transition, set it on this first valid frame
       if (!isAnchorSetRef.current) {
@@ -172,11 +197,8 @@ export function useGameLogic() {
         const hasAnchorBreach = anchorDrift > anchorThreshold;
 
         if (hasDynamicBreach || hasAnchorBreach) {
-          _stopTimer();
           const breachReason = hasDynamicBreach ? reason : anchorReason;
-          setInfractionReason(breachReason || 'Movimiento detectado');
-          _setState(GAME_STATE.LOST);
-          analyzerRef.current.reset();
+          _lose(breachReason || 'Movimiento detectado');
         }
       }
     } else if (state === GAME_STATE.DETECTING || state === GAME_STATE.READY) {
@@ -186,7 +208,7 @@ export function useGameLogic() {
         setMovementScore(score);
       }
     }
-  }, [_setState, _stopTimer]);
+  }, [_lose, _clearVisibilityTimeout]);
 
   /** Reset for another attempt */
   const reset = useCallback(() => {
