@@ -101,6 +101,17 @@
   background: #000;
 }
 
+/* Exactly the visible video rect: side panels (vitality, diagnostics)
+   position against the camera image, never over the letterbox bars. */
+.game-stage {
+  position: absolute;
+  pointer-events: none;
+}
+
+.game-stage > * {
+  pointer-events: auto;
+}
+
 /* ─── HUD overlay ─── */
 .game-hud {
   position: absolute;
@@ -169,45 +180,6 @@
 
 .state-won .state-dot  { background: var(--pulse); }
 .state-lost .state-dot { background: var(--accent-red); }
-
-/* Config pill — right */
-.hud-config {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 8px 16px;
-  border-radius: var(--radius-md);
-  background: rgba(10, 14, 26, 0.65);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  gap: 10px;
-}
-
-.hud-config-row {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.hud-config-label {
-  font-size: 0.6rem;
-  font-weight: 500;
-  color: var(--slate);
-  letter-spacing: 0.03em;
-}
-
-.hud-config-value {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--bone);
-}
-
-.hud-config-sep {
-  width: 1px;
-  height: 28px;
-  background: var(--border-subtle);
-  flex-shrink: 0;
-}
 
 /* ─ HUD bottom ─ */
 .hud-bottom {
@@ -278,13 +250,6 @@
   gap: 8px;
 }
 
-.hud-btn-back {
-  font-size: 0.85rem;
-  padding: 8px 20px;
-  background: rgba(10, 14, 26, 0.55);
-  backdrop-filter: blur(8px);
-}
-
 /* ─── Error banners & spinners ─── */
 .error-banner {
   background: rgba(224, 92, 92, 0.1);
@@ -324,7 +289,6 @@
 
 /* Responsive */
 @media (max-width: 600px) {
-  .hud-config { display: none; } /* hide config on very small screens */
   .game-layout { margin: -16px -16px -16px; }
 }
 

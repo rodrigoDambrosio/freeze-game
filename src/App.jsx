@@ -1,34 +1,95 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useCamera } from './hooks/useCamera.js';
 import { usePoseDetection } from './hooks/usePoseDetection.js';
 import { useGameLogic, GAME_STATE } from './hooks/useGameLogic.js';
-import { SENSITIVITY_LEVELS } from './lib/constants.js';
+import { SENSITIVITY_LEVELS, REPLAY_FRAME_WIDTH } from './lib/constants.js';
+import {
+  readSettings,
+  subscribeSettings,
+  writeTelemetry,
+  TELEMETRY_MIN_INTERVAL_MS,
+  TELEMETRY_STALE_MS,
+} from './lib/adminSync.js';
 import Header from './components/Header.jsx';
 import CameraView from './components/CameraView.jsx';
 import Timer from './components/Timer.jsx';
 import ResultScreen from './components/ResultScreen.jsx';
-import AdminPanel from './components/AdminPanel.jsx';
 import DiagnosticPanel from './components/DiagnosticPanel.jsx';
 import VitalityMonitor from './components/VitalityMonitor.jsx';
 import { useFaceDetection } from './hooks/useFaceDetection.js';
 import './App.css';
 
+/**
+ * Small snapshot of the current camera frame for the loss replay. Stays in an
+ * in-memory canvas for this tab only; never stored or sent.
+ */
+function grabVideoFrame(video) {
+  if (!video || video.readyState < 2 || !video.videoWidth) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = REPLAY_FRAME_WIDTH;
+  canvas.height = Math.round(REPLAY_FRAME_WIDTH * (video.videoHeight / video.videoWidth));
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
 export default function App() {
-  const [adminOpen, setAdminOpen] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
 
   const [theme, setTheme] = useState(() =>
     localStorage.getItem('cuida-theme') || 'dark'
   );
+  // Visible-video rect reported by CameraView — confines the HUD (badge,
+  // timer, buttons) to the actual camera image, never the letterbox bars.
+  const [stageInset, setStageInset] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
 
   const camera = useCamera();
   const game = useGameLogic();
   const pose = usePoseDetection(camera.videoRef, null, camera.isReady);
+  const lastTelemetryAtRef = useRef(0);
 
   // Keep the facial detector fully stopped until the player starts the round.
   // Pose detection still checks presence so the UI can enable "Empezar".
   const faceEnabled = camera.isReady && game.gameState === GAME_STATE.PLAYING;
   const face = useFaceDetection(camera.videoRef, camera.isReady, faceEnabled);
+
+  // ── Admin settings arrive from the separate admin tab/window (#admin),
+  // never from UI on this participant-facing screen ─────────────────────────
+  useEffect(() => {
+    const apply = (settings) => {
+      game.setFreezeSeconds(settings.freezeSeconds);
+      game.setSensitivity(settings.sensitivity);
+      game.setDetectGestures(settings.detectGestures);
+      game.setDetectBlink(settings.detectBlink);
+      game.setDetectBreathing(settings.detectBreathing);
+      game.setBlinkBudget(settings.blinkBudget);
+    };
+    apply(readSettings());
+    return subscribeSettings(apply);
+  }, []); // eslint-disable-line
+
+  // ── Report live state back to the admin tab ──────────────────────────────
+  // Throttled while the meter moves, written at once on a state change, and
+  // re-sent as a heartbeat so an idle game screen still reads as connected.
+  const telemetryRef = useRef(null);
+  useEffect(() => {
+    const prevState = telemetryRef.current?.gameState;
+    telemetryRef.current = {
+      movementScore: game.movementScore,
+      hasLiveReading: game.gameState === GAME_STATE.PLAYING,
+      gameState: game.gameState,
+    };
+    const now = performance.now();
+    if (prevState === game.gameState && now - lastTelemetryAtRef.current < TELEMETRY_MIN_INTERVAL_MS) return;
+    lastTelemetryAtRef.current = now;
+    writeTelemetry(telemetryRef.current);
+  }, [game.movementScore, game.gameState]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (telemetryRef.current) writeTelemetry(telemetryRef.current);
+    }, TELEMETRY_STALE_MS / 2);
+    return () => clearInterval(id);
+  }, []);
 
   // ── Persist theme ─────────────────────────────────────────────────────────
   const toggleTheme = useCallback(() => {
@@ -46,7 +107,7 @@ export default function App() {
   const { onFrameRef } = pose;
   const onGameFrame = game.onFrame;
   useEffect(() => {
-    onFrameRef.current = (lms) => onGameFrame(lms);
+    onFrameRef.current = (lms, video) => onGameFrame(lms, () => grabVideoFrame(video));
     return () => {
       onFrameRef.current = null;
     };
@@ -84,6 +145,11 @@ export default function App() {
     game.onCameraDeactivated();
   }, [camera, game]);
 
+  const handleBackToIdle = useCallback(() => {
+    handleDeactivateCamera();
+    game.backToIdle();
+  }, [handleDeactivateCamera, game]);
+
   // ── Derived state ────────────────────────────────────────────────────────
   const isPlaying = game.gameState === GAME_STATE.PLAYING;
   const isWon     = game.gameState === GAME_STATE.WON;
@@ -94,12 +160,19 @@ export default function App() {
 
   const sensitivityThreshold = SENSITIVITY_LEVELS[game.sensitivity].threshold;
 
+  const stageStyle = {
+    top: stageInset.top,
+    right: stageInset.right,
+    bottom: stageInset.bottom,
+    left: stageInset.left,
+  };
+
   return (
     <div className="app" data-theme={theme}>
       <Header
-        onAdminClick={() => setAdminOpen(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onBack={showCamera ? handleBackToIdle : undefined}
       />
 
       <main className="app-main">
@@ -177,39 +250,43 @@ export default function App() {
                 gameState={game.gameState}
                 movementScore={game.movementScore}
                 sensitivityThreshold={sensitivityThreshold}
+                onStageRectChange={setStageInset}
               />
 
-              {diagOpen && (
-                <DiagnosticPanel
-                  diagnostics={game.diagnostics}
-                  sensitivity={SENSITIVITY_LEVELS[game.sensitivity].label}
-                />
-              )}
+              {/* Panels confined to the visible video rect */}
+              <div className="game-stage" style={stageStyle}>
+                {diagOpen && (
+                  <DiagnosticPanel
+                    diagnostics={game.diagnostics}
+                    sensitivity={SENSITIVITY_LEVELS[game.sensitivity].label}
+                  />
+                )}
 
+                {!isResult && (
+                  <VitalityMonitor
+                    reading={game.vitality}
+                    faceLoading={face.isLoading || (!face.isModelReady && !face.loadError)}
+                    gestureDrift={game.gestureDrift}
+                    gestureThreshold={SENSITIVITY_LEVELS[game.sensitivity].gestureThreshold}
+                    detectGestures={game.detectGestures}
+                    detectBlink={game.detectBlink}
+                    detectBreathing={game.detectBreathing}
+                    blinkCount={game.blinkCount}
+                    blinkLimit={game.blinkLimit}
+                  />
+                )}
+                {face.loadError && (
+                  <div className="error-banner vm-error" role="alert">
+                    {face.loadError}
+                  </div>
+                )}
+              </div>
+
+              {/* ─ HUD overlay — confined to the visible video rect ─ */}
               {!isResult && (
-              <VitalityMonitor
-                reading={game.vitality}
-                faceLoading={face.isLoading || (!face.isModelReady && !face.loadError)}
-                gestureDrift={game.gestureDrift}
-                gestureThreshold={SENSITIVITY_LEVELS[game.sensitivity].gestureThreshold}
-                detectGestures={game.detectGestures}
-                detectBlink={game.detectBlink}
-                detectBreathing={game.detectBreathing}
-                blinkCount={game.blinkCount}
-                blinkLimit={game.blinkLimit}
-              />
-              )}
-              {face.loadError && (
-                <div className="error-banner vm-error" role="alert">
-                  {face.loadError}
-                </div>
-              )}
+                <div className="game-hud" aria-live="polite" style={stageStyle}>
 
-              {/* ─ HUD overlay ─ */}
-              {!isResult && (
-                <div className="game-hud" aria-live="polite">
-
-                  {/* Top row: state badge (left) + config (right) */}
+                  {/* Top row: state badge */}
                   <div className="hud-top">
                     <div className={`state-badge state-${game.gameState.toLowerCase()}`} id="game-state-badge">
                       <span className="state-dot" />
@@ -217,20 +294,6 @@ export default function App() {
                         {game.gameState === GAME_STATE.DETECTING && 'Buscando jugador…'}
                         {game.gameState === GAME_STATE.READY     && 'Listo — te estamos viendo'}
                         {game.gameState === GAME_STATE.PLAYING   && 'Intentá no ser detectado'}
-                        {game.gameState === GAME_STATE.WON       && '¡Nos engañaste!'}
-                        {game.gameState === GAME_STATE.LOST      && 'Te detectamos'}
-                      </span>
-                    </div>
-
-                    <div className="hud-config glass">
-                      <span className="hud-config-row">
-                        <span className="hud-config-label">Tiempo</span>
-                        <span className="hud-config-value">{game.freezeSeconds}s</span>
-                      </span>
-                      <span className="hud-config-sep" />
-                      <span className="hud-config-row">
-                        <span className="hud-config-label">Sensibilidad</span>
-                        <span className="hud-config-value">{SENSITIVITY_LEVELS[game.sensitivity].label}</span>
                       </span>
                     </div>
                   </div>
@@ -276,13 +339,6 @@ export default function App() {
                           Empezar
                         </button>
                       )}
-                      <button
-                        id="stop-camera-btn"
-                        className="btn btn-ghost hud-btn-back"
-                        onClick={handleDeactivateCamera}
-                      >
-                        Volver al inicio
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -293,39 +349,18 @@ export default function App() {
                 <ResultScreen
                   won={isWon}
                   onRetry={game.reset}
-                  onBack={() => {
-                    handleDeactivateCamera();
-                    game.backToIdle();
-                  }}
                   freezeSeconds={game.freezeSeconds}
                   infractionReason={game.infractionReason}
                   blinkCount={game.blinkCount}
                   vitality={game.vitality}
                   detectedSignal={game.detectedSignal}
+                  replayData={game.replayData}
                 />
               )}
             </div>
           </div>
         )}
       </main>
-
-      {/* Admin panel modal */}
-      <AdminPanel
-        isOpen={adminOpen}
-        onClose={() => setAdminOpen(false)}
-        freezeSeconds={game.freezeSeconds}
-        onFreezeSecondsChange={game.setFreezeSeconds}
-        sensitivity={game.sensitivity}
-        onSensitivityChange={game.setSensitivity}
-        detectGestures={game.detectGestures}
-        onDetectGesturesChange={game.setDetectGestures}
-        blinkBudget={game.blinkBudget}
-        onBlinkBudgetChange={game.setBlinkBudget}
-        detectBlink={game.detectBlink}
-        onDetectBlinkChange={game.setDetectBlink}
-        detectBreathing={game.detectBreathing}
-        onDetectBreathingChange={game.setDetectBreathing}
-      />
     </div>
   );
 }

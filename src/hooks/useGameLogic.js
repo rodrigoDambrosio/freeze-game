@@ -22,7 +22,11 @@ import {
   BREACH_CONFIRM_FRAMES,
   POSE_LOSS_GRACE_MS,
   GESTURE_CONFIRM_FRAMES,
+  REPLAY_BUFFER_MS,
+  REPLAY_FRAME_CAPTURE_EVERY_N_FRAMES,
+  REPLAY_SIGNAL_FOCUS,
 } from '../lib/constants.js';
+import { DEFAULT_SETTINGS } from '../lib/adminSync.js';
 
 export const GAME_STATE = {
   IDLE: 'IDLE',
@@ -33,22 +37,28 @@ export const GAME_STATE = {
   LOST: 'LOST',
 };
 
+/** Zone with the largest anchor drift, for tinting the replay. */
+function peakZone(scores) {
+  if (!scores) return null;
+  let best = null;
+  for (const [zone, value] of Object.entries(scores)) {
+    if (value > 0 && (best === null || value > scores[best])) best = zone;
+  }
+  return best;
+}
+
 export function useGameLogic() {
   // ── Admin config ────────────────────────────────────────────────────────
+  // Set from the separate admin screen (see adminSync.js), never from UI on
+  // the game screen. Which detectors are armed: each one that fires gives the
+  // player away; turning one off makes the challenge easier for an audience.
   const [freezeSeconds, setFreezeSeconds] = useState(DEFAULT_FREEZE_SECONDS);
   const [sensitivity, setSensitivity] = useState(DEFAULT_SENSITIVITY);
-  // Facial gestures are part of the freeze; blinking is involuntary, so it is
-  // shown but never penalised unless the operator explicitly turns it on.
-  // Which detectors are armed. Each one that fires gives the player away;
-  // turning one off makes the challenge easier for a given audience.
-  const [detectGestures, setDetectGestures] = useState(true);
-  const [detectBlink, setDetectBlink] = useState(true);
-  // Breathing is shown in the monitor, but penalising it by default would
-  // make a normal human unable to win a presentation game.
-  const [detectBreathing, setDetectBreathing] = useState(false);
+  const [detectGestures, setDetectGestures] = useState(DEFAULT_SETTINGS.detectGestures);
+  const [detectBlink, setDetectBlink] = useState(DEFAULT_SETTINGS.detectBlink);
+  const [detectBreathing, setDetectBreathing] = useState(DEFAULT_SETTINGS.detectBreathing);
   // Blinks tolerated before the player is given away. 0 = none.
-  // Allow a few involuntary blinks during the default 20-second round.
-  const [blinkBudget, setBlinkBudget] = useState(3);
+  const [blinkBudget, setBlinkBudget] = useState(DEFAULT_SETTINGS.blinkBudget);
 
   // ── Game state ──────────────────────────────────────────────────────────
   const [gameState, setGameState] = useState(GAME_STATE.IDLE);
@@ -60,6 +70,8 @@ export function useGameLogic() {
   // Live signs-of-life read-out, shown during and after the round.
   const [vitality, setVitality] = useState(null);
   const [gestureDrift, setGestureDrift] = useState(0);
+  // Footage + landmarks of the seconds before a loss, for the result replay.
+  const [replayData, setReplayData] = useState(null);
 
   // ── Internal refs (avoid closure staleness) ─────────────────────────────
   const gameStateRef = useRef(GAME_STATE.IDLE);
@@ -87,6 +99,23 @@ export function useGameLogic() {
   const blinkCountRef = useRef(0);
   // Consecutive frames whose movement score is over the threshold.
   const breachFramesRef = useRef(0);
+
+  // Post-game replay: rolling buffer of recent frames (landmarks + an
+  // occasional video thumbnail) plus the pose the round started from.
+  const replayBufferRef = useRef([]);
+  const anchorSnapshotRef = useRef(null);
+  const playStartedAtRef = useRef(null);
+  const lastFrameImageRef = useRef(null);
+  const replayTickRef = useRef(0);
+
+  const _clearReplay = useCallback(() => {
+    replayBufferRef.current = [];
+    anchorSnapshotRef.current = null;
+    playStartedAtRef.current = null;
+    lastFrameImageRef.current = null;
+    replayTickRef.current = 0;
+    setReplayData(null);
+  }, []);
 
   // Keep refs in sync
   useEffect(() => {
@@ -169,7 +198,8 @@ export function useGameLogic() {
     analyzerRef.current.reset();
     vitalityRef.current.reset();
     setVitality(null);
-  }, [_setState]);
+    _clearReplay();
+  }, [_setState, _clearReplay]);
 
   /** Called when camera is deactivated */
   const onCameraDeactivated = useCallback(() => {
@@ -186,7 +216,8 @@ export function useGameLogic() {
     analyzerRef.current.reset();
     vitalityRef.current.reset();
     setVitality(null);
-  }, [_setState, _stopTimer]);
+    _clearReplay();
+  }, [_setState, _stopTimer, _clearReplay]);
 
   /** Admin / Player presses "Empezar" */
   const startGame = useCallback(() => {
@@ -203,11 +234,14 @@ export function useGameLogic() {
     faceAnalyzerRef.current.reset();
     vitalityRef.current.reset();
     setVitality(null);
+    _clearReplay();
+    playStartedAtRef.current = performance.now();
 
     // Anchor the starting freeze posture if landmarks are already available
     if (latestLandmarksRef.current) {
       analyzerRef.current.setAnchor(latestLandmarksRef.current);
       isAnchorSetRef.current = true;
+      anchorSnapshotRef.current = latestLandmarksRef.current;
     }
     if (latestBlendshapesRef.current) {
       faceAnalyzerRef.current.setAnchor(latestBlendshapesRef.current);
@@ -217,16 +251,24 @@ export function useGameLogic() {
 
     _startTimer();
     _setState(GAME_STATE.PLAYING);
-  }, [_setState, _startTimer]);
+  }, [_setState, _startTimer, _clearReplay]);
 
   /**
    * The system spotted a sign of life: the round ends and the player loses.
    * Shared by every detector so the reason is always recorded the same way.
    */
-  const _detected = useCallback((reason, signal = null) => {
+  const _detected = useCallback((reason, signal = null, zone = null) => {
     detectedSignalRef.current = signal;
     _stopTimer();
     setInfractionReason(reason);
+    setReplayData({
+      frames: replayBufferRef.current.slice(),
+      anchorLandmarks: anchorSnapshotRef.current,
+      activeZone: zone,
+      focusIndices: REPLAY_SIGNAL_FOCUS[signal] ?? null,
+      survivedMs: playStartedAtRef.current ? performance.now() - playStartedAtRef.current : 0,
+    });
+    replayBufferRef.current = [];
     _setState(GAME_STATE.LOST);
     analyzerRef.current.reset();
     faceAnalyzerRef.current.reset();
@@ -314,8 +356,11 @@ export function useGameLogic() {
    * a round while the player is perfectly still:
    *  - a dropped pose only counts as leaving the frame after POSE_LOSS_GRACE_MS
    *  - a movement breach must hold for BREACH_CONFIRM_FRAMES consecutive frames
+   *
+   * `grabFrame` returns a small canvas snapshot of the camera; it is only
+   * called during a round, every few frames, to build the loss replay.
    */
-  const onFrame = useCallback((landmarks) => {
+  const onFrame = useCallback((landmarks, grabFrame) => {
     const state = gameStateRef.current;
     const now = performance.now();
 
@@ -329,6 +374,19 @@ export function useGameLogic() {
     const hasPose = poseGapMs < POSE_LOSS_GRACE_MS;
 
     if (state === GAME_STATE.PLAYING) {
+      // Keep a rolling window of recent frames for the loss replay, trimmed
+      // to REPLAY_BUFFER_MS. Frames between thumbnails reuse the last one.
+      replayTickRef.current += 1;
+      if (grabFrame && replayTickRef.current % REPLAY_FRAME_CAPTURE_EVERY_N_FRAMES === 1) {
+        const image = grabFrame();
+        if (image) lastFrameImageRef.current = image;
+      }
+      replayBufferRef.current.push({ landmarks, t: now, frameImage: lastFrameImageRef.current });
+      const cutoff = now - REPLAY_BUFFER_MS;
+      while (replayBufferRef.current.length && replayBufferRef.current[0].t < cutoff) {
+        replayBufferRef.current.shift();
+      }
+
       if (!hasPose) {
         // Pose missing for longer than the grace window: the player really left.
         _detected('La persona salió del encuadre de la cámara.', 'absent');
@@ -342,6 +400,7 @@ export function useGameLogic() {
       if (!isAnchorSetRef.current) {
         analyzerRef.current.setAnchor(landmarks);
         isAnchorSetRef.current = true;
+        anchorSnapshotRef.current = landmarks;
       }
 
       const result = analyzerRef.current.update(landmarks);
@@ -381,7 +440,8 @@ export function useGameLogic() {
 
           if (breachFramesRef.current >= BREACH_CONFIRM_FRAMES) {
             const breachReason = hasDynamicBreach ? reason : anchorReason;
-            _detected(breachReason || 'Movimiento detectado', 'movement');
+            const breachZone = hasDynamicBreach ? result.activeZone : peakZone(result.driftScores);
+            _detected(breachReason || 'Movimiento detectado', 'movement', breachZone);
           }
         } else {
           breachFramesRef.current = 0;
@@ -414,12 +474,13 @@ export function useGameLogic() {
     faceAnalyzerRef.current.reset();
     vitalityRef.current.reset();
     setVitality(null);
+    _clearReplay();
     setMovementScore(0);
     setInfractionReason(null);
     timeLeftRef.current = freezeSecondsRef.current;
     setTimeLeft(freezeSecondsRef.current);
     _setState(GAME_STATE.READY);
-  }, [_setState, _stopTimer]);
+  }, [_setState, _stopTimer, _clearReplay]);
 
   const backToIdle = useCallback(() => {
     _stopTimer();
@@ -434,10 +495,11 @@ export function useGameLogic() {
     faceAnalyzerRef.current.reset();
     vitalityRef.current.reset();
     setVitality(null);
+    _clearReplay();
     setMovementScore(0);
     setInfractionReason(null);
     _setState(GAME_STATE.IDLE);
-  }, [_setState, _stopTimer]);
+  }, [_setState, _stopTimer, _clearReplay]);
 
   // ── Cleanup ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -452,6 +514,7 @@ export function useGameLogic() {
     timeLeft,
     movementScore,
     infractionReason,
+    replayData,
     diagnostics,
     vitality,
     gestureDrift,

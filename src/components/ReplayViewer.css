@@ -1,0 +1,41 @@
+.replay-viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 640px;
+}
+
+.replay-viewer-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+.replay-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  box-shadow: 0 0 6px var(--accent-red);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+.replay-canvas {
+  width: 100%;
+  height: auto;
+  max-height: 52vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  background: #05070d;
+  border: 1px solid var(--border-subtle);
+  transform: scaleX(-1); /* mirror to match the selfie-style camera view */
+}

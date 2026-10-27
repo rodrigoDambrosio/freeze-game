@@ -1,12 +1,12 @@
 import React from 'react';
 import './Header.css';
 
-/** SVG gear icon */
-function GearIcon() {
+/** Back arrow icon */
+function BackIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="19" y1="12" x2="5" y2="12" />
+      <polyline points="12 19 5 12 12 5" />
     </svg>
   );
 }
@@ -37,25 +37,39 @@ function MoonIcon() {
   );
 }
 
-export default function Header({ onAdminClick, theme, onToggleTheme }) {
+export default function Header({ theme, onToggleTheme, onBack }) {
   const isDark = theme === 'dark';
 
   return (
     <header className="header">
-      <div className="header-brand">
-        <div className="header-logo">
-          <svg width="30" height="30" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-            <circle cx="20" cy="20" r="18" stroke="var(--signal)" strokeWidth="1.8" fill="rgba(91,156,245,0.07)" />
-            <path d="M20 10 C14 10, 10 15, 10 20 C10 26, 14 30, 20 30" stroke="var(--signal)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-            <path d="M20 10 C26 10, 30 15, 30 20 C30 26, 26 30, 20 30" stroke="var(--pulse)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-            <circle cx="20" cy="20" r="3" fill="var(--signal)" />
-            <circle cx="20" cy="12" r="1.8" fill="var(--signal)" opacity="0.6" />
-            <circle cx="20" cy="28" r="1.8" fill="var(--pulse)" opacity="0.6" />
-          </svg>
-        </div>
-        <div className="header-text">
-          <span className="header-title">C.U.I.D.A.</span>
-          <span className="header-subtitle">Freeze Challenge</span>
+      <div className="header-left">
+        {onBack && (
+          <button
+            id="header-back-btn"
+            className="header-icon-btn"
+            onClick={onBack}
+            title="Volver al inicio"
+            aria-label="Volver al inicio"
+          >
+            <BackIcon />
+          </button>
+        )}
+
+        <div className="header-brand">
+          <div className="header-logo">
+            <svg width="30" height="30" viewBox="0 0 40 40" fill="none" aria-hidden="true">
+              <circle cx="20" cy="20" r="18" stroke="var(--signal)" strokeWidth="1.8" fill="rgba(91,156,245,0.07)" />
+              <path d="M20 10 C14 10, 10 15, 10 20 C10 26, 14 30, 20 30" stroke="var(--signal)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+              <path d="M20 10 C26 10, 30 15, 30 20 C30 26, 26 30, 20 30" stroke="var(--pulse)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+              <circle cx="20" cy="20" r="3" fill="var(--signal)" />
+              <circle cx="20" cy="12" r="1.8" fill="var(--signal)" opacity="0.6" />
+              <circle cx="20" cy="28" r="1.8" fill="var(--pulse)" opacity="0.6" />
+            </svg>
+          </div>
+          <div className="header-text">
+            <span className="header-title">C.U.I.D.A.</span>
+            <span className="header-subtitle">Freeze Challenge</span>
+          </div>
         </div>
       </div>
 
@@ -69,17 +83,6 @@ export default function Header({ onAdminClick, theme, onToggleTheme }) {
           aria-label={isDark ? 'Activar tema claro' : 'Activar tema oscuro'}
         >
           {isDark ? <SunIcon /> : <MoonIcon />}
-        </button>
-
-        {/* Admin settings */}
-        <button
-          id="admin-settings-btn"
-          className="header-icon-btn"
-          onClick={onAdminClick}
-          title="Configuración del administrador"
-          aria-label="Abrir configuración"
-        >
-          <GearIcon />
         </button>
       </div>
     </header>

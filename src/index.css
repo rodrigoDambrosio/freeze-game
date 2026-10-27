@@ -108,20 +108,16 @@ body {
 
 /* Light-theme specific overrides for glass panels on camera (HUD needs dark bg regardless) */
 .app[data-theme="light"] .state-badge,
-.app[data-theme="light"] .hud-config,
-.app[data-theme="light"] .hud-instructions,
-.app[data-theme="light"] .hud-btn-back {
+.app[data-theme="light"] .hud-instructions {
   background: rgba(10, 14, 26, 0.68);
   color: #e8e4df;
   border-color: rgba(232, 228, 223, 0.2);
 }
 .app[data-theme="light"] .state-badge .state-label,
-.app[data-theme="light"] .hud-config-value,
 .app[data-theme="light"] .hud-instructions p,
 .app[data-theme="light"] .timer-hint {
   color: #e8e4df;
 }
-.app[data-theme="light"] .hud-config-label,
 .app[data-theme="light"] .instruction-sub {
   color: rgba(232, 228, 223, 0.6) !important;
 }

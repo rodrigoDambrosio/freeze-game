@@ -5,7 +5,8 @@
   align-items: center;
   justify-content: center;
   z-index: 50;
-  overflow: hidden;
+  overflow-y: auto;
+  padding: 16px 0;
 }
 
 .result-won {
@@ -36,6 +37,17 @@
   width: 90%;
   position: relative;
   z-index: 2;
+}
+
+/* Replay is the focal content — give it real room to read. */
+.result-card-replay {
+  max-width: 760px;
+  padding: 28px 32px;
+  margin: auto 0;
+}
+
+.result-card-replay .result-subtitle {
+  max-width: 560px;
 }
 
 .result-won .result-card {

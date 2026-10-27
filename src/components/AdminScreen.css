@@ -1,25 +1,22 @@
-.admin-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(10, 14, 26, 0.72);
-  backdrop-filter: blur(6px);
-  display: flex;
+.admin-page {
   align-items: center;
   justify-content: center;
-  z-index: 100;
-  animation: fadeIn 0.2s ease;
+  padding: 24px;
+  overflow-y: auto;
 }
 
-.admin-panel {
-  width: min(480px, 92vw);
+.admin-screen {
+  width: min(480px, 100%);
   border-radius: var(--radius-xl);
   padding: 0;
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  margin: auto 0;
 }
 
 .admin-header {
   display: flex;
+  gap: 16px;
   align-items: flex-start;
   justify-content: space-between;
   padding: 28px 28px 20px;
@@ -226,4 +223,69 @@
   font-size: 11.5px;
   line-height: 1.45;
   color: var(--text-secondary);
+}
+
+/* ── Connection to the game screen ───────────────────────────────────────── */
+
+.admin-conn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(224, 92, 92, 0.1);
+  border: 1px solid rgba(224, 92, 92, 0.25);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.admin-conn-badge .state-dot {
+  background: var(--accent-red);
+}
+.admin-conn-badge.connected {
+  background: rgba(61, 214, 140, 0.1);
+  border-color: rgba(61, 214, 140, 0.25);
+  color: var(--text-secondary);
+}
+.admin-conn-badge.connected .state-dot {
+  background: var(--pulse);
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+/* ── Live movement meter ─────────────────────────────────────────────────── */
+
+.admin-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.admin-meter-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.admin-meter-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent-green);
+  transition: width 0.1s linear;
+}
+.admin-meter-fill.over {
+  background: var(--accent-red);
+}
+
+.admin-meter-threshold-line {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--bone);
+  opacity: 0.6;
 }

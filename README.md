@@ -4,7 +4,7 @@ Módulo demostrativo autosuficiente de **C.U.I.D.A.** para presentaciones, feria
 
 **El objetivo no es quedarse quieto: es evitar que el sistema detecte que estás vivo.** Durante 20 segundos, C.U.I.D.A. busca cualquier señal de vida — movimiento, gestos, parpadeo, respiración. Si encuentra una sola, te detectó. Si no encuentra ninguna, el jugador se lleva el premio.
 
-La configuración inicial busca que sea difícil pero posible: los gestos se penalizan, se toleran tres parpadeos y la respiración se muestra como señal informativa sin hacer perder la partida. El administrador puede endurecerla desde el panel.
+La configuración inicial busca que sea difícil pero posible: los gestos se penalizan, se toleran tres parpadeos y la respiración se muestra como señal informativa sin hacer perder la partida. El administrador puede endurecerla desde la pantalla de configuración, que se abre aparte para que los participantes no la vean.
 
 ---
 
@@ -94,13 +94,15 @@ npm run dev
 2. El sistema encuentra a la persona y marca que está listo.
 3. El administrador presiona **"Empezar"**. Ahí se anclan la postura y la expresión de referencia.
 4. Durante 20 segundos el jugador intenta no ser detectado. El panel muestra cuántos detectores lo tienen.
-5. Al terminar, la pantalla de resultado nombra **qué detector lo delató**.
+5. Al terminar, la pantalla de resultado nombra **qué detector lo delató** y muestra una **repetición en cámara lenta** de los últimos segundos: el video de la cámara con el esqueleto encima, la postura inicial como referencia y un halo sobre lo que lo delató (la articulación que se movió, los ojos, la boca o los hombros). El video vive sólo en memoria de la pestaña y nunca se guarda ni se envía.
 
 ### Atajos
 
 - **D** — panel de diagnóstico: score por zona contra su umbral, escala corporal y qué landmarks se descartaron por inestables.
 
-### Panel de administrador
+### Pantalla de configuración
+
+Se abre en otra pestaña o ventana con `http://localhost:5173/#admin` (no hay ningún botón en la pantalla de juego). Los cambios se aplican en vivo a la pantalla de juego a través de `localStorage`, sin servidor. Muestra si la pantalla de juego está conectada, en qué estado está y la lectura de movimiento en vivo contra el umbral.
 
 - Duración: 20 a 60 segundos. El mínimo no es una preferencia: la frecuencia respiratoria necesita unos quince segundos de señal para poder medirse.
 - Sensibilidad: **Baja**, **Media** o **Alta** (afecta cuerpo y gestos).

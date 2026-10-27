@@ -1,4 +1,7 @@
 import React from 'react';
+import ReplayViewer from './ReplayViewer.jsx';
+import { getLostMessage } from '../lib/resultMessages.js';
+import { ZONE_DISPLAY_LABELS } from '../lib/constants.js';
 import './ResultScreen.css';
 
 const PARTICLE_COLORS = ['#5b9cf5', '#3dd68c', '#e8aa42', '#a78bfa', '#f472b6'];
@@ -26,11 +29,32 @@ const SIGNAL_NAMES = {
   absent: 'la pérdida de encuadre',
 };
 
+// Short tag for the replay header when no body zone is involved.
+const SIGNAL_REPLAY_LABELS = {
+  gesture: 'Gesto facial',
+  blink: 'Parpadeo',
+  breathing: 'Respiración',
+  absent: 'Fuera de cuadro',
+  movement: 'Movimiento',
+};
+
 export default function ResultScreen({
-  won, onRetry, onBack, freezeSeconds, infractionReason, blinkCount, vitality,
-  detectedSignal,
+  won, onRetry, freezeSeconds, infractionReason, blinkCount, vitality,
+  detectedSignal, replayData,
 }) {
   const particles = won ? STATIC_PARTICLES : [];
+
+  const survivedSeconds = !won && replayData?.survivedMs != null
+    ? Math.max(0, Math.min(freezeSeconds, replayData.survivedMs / 1000))
+    : null;
+  const lostMessage = survivedSeconds != null
+    ? getLostMessage(survivedSeconds, freezeSeconds)
+    : null;
+
+  const hasReplay = !won && replayData?.frames?.length > 1;
+  const replayLabel = replayData?.activeZone
+    ? ZONE_DISPLAY_LABELS[replayData.activeZone]
+    : SIGNAL_REPLAY_LABELS[detectedSignal];
 
   return (
     <div className={`result-screen ${won ? 'result-won' : 'result-lost'}`} id="result-screen">
@@ -53,25 +77,27 @@ export default function ResultScreen({
       ))}
 
       {/* Main card */}
-      <div className={`result-card glass animate-fadeInScale ${won ? '' : 'animate-shake'}`}>
+      <div className={`result-card glass animate-fadeInScale ${hasReplay ? 'result-card-replay' : ''} ${won ? '' : 'animate-shake'}`}>
 
-        {/* Result mark */}
-        <div className={`result-mark ${won ? 'result-mark-won' : 'result-mark-lost'}`}>
-          {won ? (
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Victoria">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          ) : (
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Derrota">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          )}
-        </div>
+        {/* Result mark — the replay takes its place when there is one */}
+        {!hasReplay && (
+          <div className={`result-mark ${won ? 'result-mark-won' : 'result-mark-lost'}`}>
+            {won ? (
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Victoria">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Derrota">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            )}
+          </div>
+        )}
 
         {/* Headline */}
         <h1 className="result-title">
-          {won ? '¡Nos engañaste!' : 'Te detectamos'}
+          {won ? '¡Nos engañaste!' : (lostMessage?.title ?? 'Te detectamos')}
         </h1>
 
         <p className="result-subtitle">
@@ -80,7 +106,19 @@ export default function ResultScreen({
             : infractionReason
             ? `${infractionReason}.`
             : 'El sistema encontró una señal de vida.'}
+          {lostMessage && <><br />{lostMessage.subtitle}</>}
         </p>
+
+        {/* What the camera saw in the seconds before the detection */}
+        {hasReplay && (
+          <ReplayViewer
+            frames={replayData.frames}
+            anchorLandmarks={replayData.anchorLandmarks}
+            activeZone={replayData.activeZone}
+            focusIndices={replayData.focusIndices}
+            label={replayLabel}
+          />
+        )}
 
         {/* What the system picked up while the round ran. Blinking is listed
             even though it never costs the round: seeing it counted is the
@@ -127,13 +165,6 @@ export default function ResultScreen({
             onClick={onRetry}
           >
             {won ? 'Jugar de nuevo' : 'Reintentar'}
-          </button>
-          <button
-            id="result-back-btn"
-            className="btn btn-ghost"
-            onClick={onBack}
-          >
-            Volver al inicio
           </button>
         </div>
       </div>

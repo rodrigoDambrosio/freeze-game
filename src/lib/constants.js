@@ -56,6 +56,21 @@ export const TRACKED_LANDMARK_INDICES = [
   ...LEGS_LANDMARK_INDICES,
 ];
 
+// Zone name → landmark indices, for replay highlighting and displacement lookup
+export const ZONE_LANDMARK_INDICES = {
+  head: HEAD_LANDMARK_INDICES,
+  torso: TORSO_LANDMARK_INDICES,
+  arms: ARMS_LANDMARK_INDICES,
+  legs: LEGS_LANDMARK_INDICES,
+};
+
+export const ZONE_DISPLAY_LABELS = {
+  head: 'Cabeza',
+  torso: 'Cuerpo',
+  arms: 'Brazos',
+  legs: 'Piernas',
+};
+
 // Zone sensitivity weights to compensate for anatomical lever arm differences
 export const ZONE_WEIGHTS = {
   head: 1.4,      // Head movements have shorter radius than arms
@@ -273,3 +288,54 @@ export const BREATHING_FAST_WINDOW_FRAMES = 120;   // ~4s at 30fps
 // Breathing lifts the shoulder line by roughly 1% of shoulder width. The
 // threshold sits below that but well above the smoothed detector noise.
 export const BREATHING_AMPLITUDE_THRESHOLD = 0.006;
+
+
+// ─── Post-game replay ──────────────────────────────────────────────────────
+// Rolling window of frames kept during PLAYING so the loss replay can show
+// the moments leading into the detection.
+export const REPLAY_BUFFER_MS = 3500;
+export const REPLAY_PLAYBACK_RATE = 0.6; // slow-motion factor for legibility
+export const REPLAY_HOLD_MS = 700;       // pause on the final frame before looping
+
+export const REPLAY_ZONE_COLOR = '#ff6b6b';
+export const REPLAY_GHOST_COLOR = 'rgba(232, 228, 223, 0.4)';
+
+// Video thumbnail captured alongside landmarks for the replay background.
+// Width is fixed and height follows the camera's aspect ratio. It lives in
+// an in-memory canvas for this tab only — never stored or sent anywhere.
+export const REPLAY_FRAME_WIDTH = 360;
+export const REPLAY_FRAME_CAPTURE_EVERY_N_FRAMES = 2; // ~15fps at a 30fps camera
+
+// Pose landmarks the replay halo points at when the detection came from the
+// face rather than the body: eyes for a blink, mouth for a gesture,
+// shoulders for breathing.
+export const REPLAY_SIGNAL_FOCUS = {
+  blink: [2, 5],
+  gesture: [9, 10],
+  breathing: [11, 12],
+};
+
+// Lost-result copy tiers, keyed by the fraction of freezeSeconds survived (0..1).
+// `max` is the upper bound of the tier (inclusive); the list is checked in order.
+export const LOST_MESSAGE_TIERS = [
+  {
+    max: 0.15,
+    title: '¡Uy, eso fue rápido!',
+    subtitle: 'Duraste {survived}s de {total}s. Con un poco más de foco lo lográs.',
+  },
+  {
+    max: 0.45,
+    title: 'Vas agarrando la mano',
+    subtitle: 'Aguantaste {survived}s de {total}s. Un poco más de control y ganás.',
+  },
+  {
+    max: 0.75,
+    title: '¡Ya casi!',
+    subtitle: 'Llegaste a {survived}s de {total}s — estuviste cerca.',
+  },
+  {
+    max: 1.01,
+    title: '¡A un pestañeo de ganar!',
+    subtitle: 'Te faltó nada: {survived}s de {total}s.',
+  },
+];
