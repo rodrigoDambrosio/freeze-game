@@ -11,19 +11,22 @@ export const SENSITIVITY_LEVELS = {
     label: 'Baja',
     threshold: 0.022,
     anchorThreshold: 0.050,
+    gestureThreshold: 0.30,
     description: 'Tolerante — pequeños movimientos no penalizan',
   },
   medium: {
     label: 'Media',
     threshold: 0.014,
     anchorThreshold: 0.035,
+    gestureThreshold: 0.18,
     description: 'Balanceado — movimiento claro penaliza',
   },
   high: {
     label: 'Alta',
     threshold: 0.008,
     anchorThreshold: 0.022,
-    description: 'Estricto — cualquier movimiento penaliza',
+    gestureThreshold: 0.10,
+    description: 'Estricto — cualquier gesto penaliza',
   },
 };
 export const DEFAULT_SENSITIVITY = 'medium';
@@ -83,3 +86,148 @@ export const BOX_COLORS = {
   lost:      '#e05c5c',  // --accent-red refinado
   won:       '#3dd68c',  // --pulse (verde cálido)
 };
+
+// ─── Anti-flicker / noise rejection ─────────────────────────────────────────
+// MediaPipe landmarks jitter by a few thousandths of a normalized unit even
+// when the player is perfectly still. These settings keep that jitter from
+// being read as real movement.
+
+// Adaptive EMA on incoming landmarks: tiny displacements are smoothed hard,
+// genuine movement passes through almost untouched.
+//   alpha = min(1, MIN_ALPHA + displacement * GAIN)
+export const LANDMARK_SMOOTHING_MIN_ALPHA = 0.25;
+export const LANDMARK_SMOOTHING_GAIN = 25;
+
+// How fast a landmark's visibility is allowed to fall. Holding the last good
+// position for a frame or two prevents the averaging set (and the centroid)
+// from jumping when a landmark briefly drops below the visibility gate.
+export const VISIBILITY_DECAY_ALPHA = 0.3;
+
+// Median filter width for the movement score — rejects isolated spikes
+// without blunting sustained movement.
+export const SCORE_MEDIAN_WINDOW = 5;
+
+// The freeze anchor is averaged over this many frames instead of captured
+// from a single (possibly noisy) frame.
+export const ANCHOR_SAMPLE_FRAMES = 8;
+
+// Frames to ignore after the analyzer starts, while the smoother converges.
+export const ANALYZER_WARMUP_FRAMES = 10;
+
+// A breach must persist this many consecutive frames before it ends the game.
+export const BREACH_CONFIRM_FRAMES = 4;
+
+// The pose may vanish for this long (dropped detections) before it counts as
+// the player having left the frame.
+export const POSE_LOSS_GRACE_MS = 800;
+
+
+// Landmarks whose coordinates fall outside the frame are MediaPipe
+// extrapolating a body part it cannot see. Their positions are invented and
+// swing wildly between frames, so they are excluded from the measurement.
+// A small margin keeps genuinely edge-of-frame points usable.
+export const FRAME_BOUNDS_MARGIN = 0.03;
+
+// A zone only produces a score when at least this fraction of its landmarks
+// are usable — otherwise a close-up framing lets one guessed point speak for
+// a whole limb.
+export const MIN_ZONE_COVERAGE_RATIO = 0.5;
+
+// Reference distances for normalizing movement by apparent body size, so the
+// same physical movement scores the same close to or far from the webcam.
+// Shoulder width is preferred; head width (ear to ear) is the fallback for
+// close-ups, where the shoulders are out of frame or merely guessed.
+export const REFERENCE_SHOULDER_WIDTH = 0.22;
+export const REFERENCE_HEAD_WIDTH = 0.08;
+
+// Scale clamp. The upper bound is generous because a head-and-shoulders
+// close-up really can be several times the reference size, and clamping too
+// early leaves that framing twice as sensitive as it should be.
+export const MIN_BODY_SCALE = 0.5;
+export const MAX_BODY_SCALE = 4.0;
+
+
+// ─── Per-landmark stability calibration ─────────────────────────────────────
+// Visibility and frame bounds are not enough to tell an observed landmark from
+// one MediaPipe is inferring: it reports confident-looking positions for elbows
+// and hips it has never seen, and those positions keep jittering. That jitter
+// is CONSTANT, not spiky, so neither temporal median nor breach confirmation
+// filters it — it just sits above the threshold and ends the round instantly.
+//
+// So the analyzer measures each landmark for itself over the opening frames and
+// drops the ones that will not hold still relative to the rest of the body.
+export const STABILITY_CALIBRATION_FRAMES = 10;
+
+// A landmark is unstable when its mean frame-to-frame movement during
+// calibration exceeds this multiple of the body median...
+export const UNSTABLE_RELATIVE_FACTOR = 3.0;
+
+// ...and also clears this absolute floor, so that a genuinely motionless body
+// (where the median is near zero) does not flag every landmark it has.
+export const UNSTABLE_ABSOLUTE_FLOOR = 0.004;
+
+
+// ─── Signs-of-life monitoring (C.U.I.D.A. vitality demo) ────────────────────
+// Face mesh with blendshapes: 52 expression scores per frame, which is what
+// makes blink and micro-gesture detection possible. Pose landmarks give only
+// five coarse face points and cannot see an eyelid.
+export const MEDIAPIPE_FACE_MODEL_URL = '/models/face_landmarker.task';
+
+// Blink: the eye-closed blendshape crossing up, then back down past a lower
+// release value, so a score hovering at the line is one blink and not twenty.
+export const BLINK_THRESHOLD = 0.45;
+export const BLINK_RELEASE = 0.25;
+export const BLINK_RATE_WINDOW_MS = 60000;
+
+// A resting adult blinks about 12-20 times a minute; below this suggests a
+// fixed stare, which is itself worth surfacing.
+export const BLINK_RATE_LOW = 6;
+export const BLINK_RATE_NORMAL = 12;
+
+// Expression: blendshapes that move when someone speaks, grimaces or reacts.
+// Deliberately excludes the blink shapes, which are counted on their own.
+export const EXPRESSION_BLENDSHAPES = [
+  'jawOpen',
+  'mouthSmileLeft',
+  'mouthSmileRight',
+  'mouthPucker',
+  'mouthFrownLeft',
+  'mouthFrownRight',
+  'browInnerUp',
+  'browDownLeft',
+  'browDownRight',
+  'cheekSquintLeft',
+  'cheekSquintRight',
+  'noseSneerLeft',
+  'noseSneerRight',
+];
+export const EXPRESSION_WINDOW_FRAMES = 90;   // ~3s at 30fps
+export const EXPRESSION_ACTIVE_STD = 0.012;
+
+// Head motion: nose position normalized by head width, spread over ~2s.
+// Set just above the detector noise floor, so an awake person holding still
+// still registers while a propped-up head does not.
+export const HEAD_MOTION_WINDOW_FRAMES = 60;
+export const HEAD_MOTION_ACTIVE = 0.006;
+
+// Breathing: found by periodicity, not amplitude. The window must hold at
+// least two full cycles at the slowest rate searched for.
+export const BREATHING_WINDOW_FRAMES = 600;   // ~20s at 30fps
+export const BREATHING_MIN_RPM = 8;
+export const BREATHING_MAX_RPM = 30;
+export const BREATHING_MIN_CONFIDENCE = 0.35;
+
+// How long without any sign of consciousness before the state escalates.
+export const VITALITY_STILL_MS = 8000;
+export const VITALITY_ALERT_MS = 20000;
+
+
+// ─── Facial gesture detection (game) ────────────────────────────────────────
+// Blendshape scores are 0..1 and far less noisy than landmark positions, so
+// these windows are shorter than the body ones.
+export const GESTURE_MEDIAN_WINDOW = 5;
+export const GESTURE_CALIBRATION_FRAMES = 12;
+
+// A gesture must hold this many consecutive frames to end the round, the same
+// confirmation the body movement gets.
+export const GESTURE_CONFIRM_FRAMES = 4;

@@ -18,6 +18,10 @@ export default function AdminPanel({
   onFreezeSecondsChange,
   sensitivity,
   onSensitivityChange,
+  detectGestures,
+  onDetectGesturesChange,
+  penalizeBlink,
+  onPenalizeBlinkChange,
 }) {
   if (!isOpen) return null;
 
@@ -99,11 +103,48 @@ export default function AdminPanel({
 
         <div className="admin-divider" />
 
+        <section className="admin-section">
+          <label className="admin-label">Señales faciales</label>
+
+          <label className="admin-toggle">
+            <input
+              type="checkbox"
+              id="detect-gestures"
+              checked={detectGestures}
+              onChange={(e) => onDetectGesturesChange(e.target.checked)}
+            />
+            <span className="admin-toggle-body">
+              <span className="admin-toggle-name">Penalizar gestos faciales</span>
+              <span className="admin-toggle-desc">
+                Sonreír, abrir la boca o levantar las cejas termina la ronda.
+              </span>
+            </span>
+          </label>
+
+          <label className="admin-toggle">
+            <input
+              type="checkbox"
+              id="penalize-blink"
+              checked={penalizeBlink}
+              onChange={(e) => onPenalizeBlinkChange(e.target.checked)}
+            />
+            <span className="admin-toggle-body">
+              <span className="admin-toggle-name">Penalizar parpadeo</span>
+              <span className="admin-toggle-desc">
+                Desactivado por defecto: parpadear es involuntario. El sistema
+                lo detecta y lo muestra igual.
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <div className="admin-divider" />
+
         {/* Footer — tech info lives here */}
         <div className="admin-footer">
           <div className="admin-tech-badge">
             <span className="tech-dot" style={{ background: 'var(--signal)' }} />
-            MediaPipe Pose Landmarker
+            MediaPipe Pose + Face Landmarker
           </div>
           <div className="admin-tech-badge">
             <span className="tech-dot" style={{ background: 'var(--pulse)' }} />

@@ -18,7 +18,9 @@ const STATIC_PARTICLES = Array.from({ length: 10 }, (_, i) => ({
  * Victory → green pulse + confetti particles
  * Defeat  → red shake
  */
-export default function ResultScreen({ won, onRetry, onBack, freezeSeconds, infractionReason }) {
+export default function ResultScreen({
+  won, onRetry, onBack, freezeSeconds, infractionReason, blinkCount, vitality,
+}) {
   const particles = won ? STATIC_PARTICLES : [];
 
   return (
@@ -70,6 +72,33 @@ export default function ResultScreen({ won, onRetry, onBack, freezeSeconds, infr
             ? `Detectado: ${infractionReason}.`
             : 'El sistema detectó movimiento. Intentalo de nuevo.'}
         </p>
+
+        {/* What the system picked up while the round ran. Blinking is listed
+            even though it never costs the round: seeing it counted is the
+            point — the same sensing that judges the game is what tells a
+            monitor whether someone is still responsive. */}
+        <div className="result-signals">
+          <div className="result-signal">
+            <span className="result-signal-value">{blinkCount ?? 0}</span>
+            <span className="result-signal-label">parpadeos detectados</span>
+          </div>
+          {vitality?.breathingDetected && (
+            <div className="result-signal">
+              <span className="result-signal-value">
+                {vitality.breathingRate.toFixed(0)}
+              </span>
+              <span className="result-signal-label">respiraciones / min</span>
+            </div>
+          )}
+          {vitality?.label && (
+            <div className="result-signal">
+              <span className="result-signal-value result-signal-text">
+                {vitality.label}
+              </span>
+              <span className="result-signal-label">estado vital</span>
+            </div>
+          )}
+        </div>
 
         {/* Actions */}
         <div className="result-actions">

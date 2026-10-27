@@ -8,10 +8,15 @@ import CameraView from './components/CameraView.jsx';
 import Timer from './components/Timer.jsx';
 import ResultScreen from './components/ResultScreen.jsx';
 import AdminPanel from './components/AdminPanel.jsx';
+import DiagnosticPanel from './components/DiagnosticPanel.jsx';
+import VitalityMonitor from './components/VitalityMonitor.jsx';
+import { useFaceDetection } from './hooks/useFaceDetection.js';
 import './App.css';
 
 export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
+  const [diagOpen, setDiagOpen] = useState(false);
+
   const [theme, setTheme] = useState(() =>
     localStorage.getItem('cuida-theme') || 'dark'
   );
@@ -19,6 +24,10 @@ export default function App() {
   const camera = useCamera();
   const game = useGameLogic();
   const pose = usePoseDetection(camera.videoRef, null, camera.isReady);
+
+  // Face landmarker runs whenever the camera does: facial gestures are part
+  // of the freeze, and the vitality read-out is live throughout.
+  const face = useFaceDetection(camera.videoRef, camera.isReady, camera.isReady);
 
   // ── Persist theme ─────────────────────────────────────────────────────────
   const toggleTheme = useCallback(() => {
@@ -30,12 +39,38 @@ export default function App() {
   }, []);
 
   // ── Wire pose detections → game logic ────────────────────────────────────
+  // Fed straight from the inference loop rather than from the landmarks state:
+  // React skips a re-render when the pose is null two frames running, which
+  // would stop the game from ever seeing a sustained loss of detection.
+  const { onFrameRef } = pose;
+  const onGameFrame = game.onFrame;
   useEffect(() => {
-    if (!pose.isRunning) return;
-    const hasPose = !!pose.landmarks;
-    game.onPoseDetected(hasPose);
-    game.onFrame(pose.landmarks);
-  }, [pose.landmarks, pose.isRunning]); // eslint-disable-line
+    onFrameRef.current = (lms) => onGameFrame(lms);
+    return () => {
+      onFrameRef.current = null;
+    };
+  }, [onFrameRef, onGameFrame]);
+
+  // Face stream carries blinking, expression and the gesture judgement.
+  const faceFrameRef = face.onFrameRef;
+  const onGameFace = game.onFaceFrame;
+  useEffect(() => {
+    faceFrameRef.current = onGameFace;
+    return () => {
+      faceFrameRef.current = null;
+    };
+  }, [faceFrameRef, onGameFace]);
+
+  // ── Diagnostics overlay (D) ──────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'd' && e.key !== 'D') return;
+      if (e.target.closest?.('input, textarea, select')) return;
+      setDiagOpen((v) => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // ── Camera activation callbacks ──────────────────────────────────────────
   const handleActivateCamera = useCallback(async () => {
@@ -138,6 +173,29 @@ export default function App() {
                 sensitivityThreshold={sensitivityThreshold}
               />
 
+              {diagOpen && (
+                <DiagnosticPanel
+                  diagnostics={game.diagnostics}
+                  sensitivity={SENSITIVITY_LEVELS[game.sensitivity].label}
+                />
+              )}
+
+              {!isResult && (
+              <VitalityMonitor
+                reading={game.vitality}
+                faceLoading={face.isLoading || (!face.isModelReady && !face.loadError)}
+                gestureDrift={game.gestureDrift}
+                gestureThreshold={SENSITIVITY_LEVELS[game.sensitivity].gestureThreshold}
+                detectGestures={game.detectGestures}
+                isPlaying={isPlaying}
+              />
+              )}
+              {face.loadError && (
+                <div className="error-banner vm-error" role="alert">
+                  {face.loadError}
+                </div>
+              )}
+
               {/* ─ HUD overlay ─ */}
               {!isResult && (
                 <div className="game-hud" aria-live="polite">
@@ -232,6 +290,8 @@ export default function App() {
                   }}
                   freezeSeconds={game.freezeSeconds}
                   infractionReason={game.infractionReason}
+                  blinkCount={game.blinkCount}
+                  vitality={game.vitality}
                 />
               )}
             </div>
@@ -247,6 +307,10 @@ export default function App() {
         onFreezeSecondsChange={game.setFreezeSeconds}
         sensitivity={game.sensitivity}
         onSensitivityChange={game.setSensitivity}
+        detectGestures={game.detectGestures}
+        onDetectGesturesChange={game.setDetectGestures}
+        penalizeBlink={game.penalizeBlink}
+        onPenalizeBlinkChange={game.setPenalizeBlink}
       />
     </div>
   );
