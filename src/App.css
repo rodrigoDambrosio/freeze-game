@@ -212,6 +212,23 @@
   border-radius: 50%;
 }
 
+/* Live movement read-out, in the badge rather than over the footage. */
+.state-movement {
+  display: block;
+  width: 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.state-movement-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 110ms linear, background-color 180ms ease;
+}
+
 .state-playing .state-dot {
   background: var(--pulse);
   box-shadow: 0 0 7px var(--pulse);
@@ -225,13 +242,15 @@
 .state-lost .state-dot { background: var(--accent-red); }
 
 /* ─ HUD bottom ─ */
+/* Sits lower than the HUD's own padding would put it: both the timer and the
+   start button read better clear of the face. */
 .hud-bottom {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 14px;
   pointer-events: all;
-  padding-bottom: 8px;
+  margin-bottom: -10px;
 }
 
 /* Timer block */
@@ -239,15 +258,6 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-}
-
-.timer-hint {
-  font-size: 0.78rem;
-  color: rgba(232, 228, 223, 0.65);
-  letter-spacing: 0.03em;
-  font-weight: 400;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
 /* Action buttons */

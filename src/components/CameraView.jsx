@@ -20,8 +20,6 @@ export default function CameraView({
   onVideoReady,
   landmarks,
   gameState,
-  movementScore,
-  sensitivityThreshold,
   onStageRectChange,
 }) {
   const localVideoRef = useRef(null);
@@ -103,15 +101,12 @@ export default function CameraView({
       // Mirror transform (canvas is flipped via CSS, so we draw normally)
       const color = getBoxColor();
 
-      if (landmarks) {
-        // Skeleton is hidden once the round starts — the player should feel
-        // watched, not debug how the detector sees them. It resurfaces in the
-        // loss replay instead.
-        if (gameState !== 'PLAYING') {
-          drawSkeleton(ctx, landmarks, W, H, color);
-        }
+      // Both overlays are framing aids for getting into position. Once the
+      // round starts the camera goes clean: the player should be looking at
+      // themselves holding still, not at a box tinting them green.
+      if (landmarks && gameState !== 'PLAYING') {
+        drawSkeleton(ctx, landmarks, W, H, color);
 
-        // Draw bounding box
         const box = getLandmarkBoundingBox(landmarks, W, H, 24);
         if (box) {
           drawDetectionBox(ctx, box, color, gameState);
@@ -174,25 +169,6 @@ export default function CameraView({
           </div>
         )}
 
-        {/* Movement bar (visible only during PLAYING) */}
-        {gameState === 'PLAYING' && (
-          <div className="movement-bar-wrap">
-            <div className="movement-bar-label">Movimiento</div>
-            <div className="movement-bar-track">
-              <div
-                className="movement-bar-fill"
-                style={{
-                  width: `${Math.min(100, (movementScore / (sensitivityThreshold * 2)) * 100)}%`,
-                  background: movementScore > sensitivityThreshold
-                    ? 'var(--accent-red)'
-                    : movementScore > sensitivityThreshold * 0.6
-                    ? 'var(--accent-yellow)'
-                    : 'var(--accent-green)',
-                }}
-              />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

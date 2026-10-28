@@ -112,8 +112,7 @@ body {
   color: #e8e4df;
   border-color: rgba(232, 228, 223, 0.2);
 }
-.app[data-theme="light"] .state-badge .state-label,
-.app[data-theme="light"] .timer-hint {
+.app[data-theme="light"] .state-badge .state-label {
   color: #e8e4df;
 }
 

@@ -164,6 +164,18 @@ export default function App() {
   // from here instead.
   const stateDescription = isPlaying ? 'Partida en curso' : 'Jugador detectado';
 
+  // Only the found-but-not-started badge is a bare dot now.
+  const isReadyToStart = !isDetecting && !isPlaying;
+
+  // Live movement read-out for the badge. The track tops out at twice the
+  // threshold, so the halfway mark is the line that ends the round.
+  const movementPercent = Math.min(100, (game.movementScore / (sensitivityThreshold * 2)) * 100);
+  const movementLevel = game.movementScore > sensitivityThreshold
+    ? 'var(--accent-red)'
+    : game.movementScore > sensitivityThreshold * 0.6
+      ? 'var(--accent-yellow)'
+      : 'var(--accent-green)';
+
   const stageStyle = {
     top: stageInset.top,
     right: stageInset.right,
@@ -244,8 +256,6 @@ export default function App() {
                 onVideoReady={camera.handleVideoReady}
                 landmarks={pose.landmarks}
                 gameState={game.gameState}
-                movementScore={game.movementScore}
-                sensitivityThreshold={sensitivityThreshold}
                 onStageRectChange={setStageInset}
               />
 
@@ -281,19 +291,42 @@ export default function App() {
               {!isResult && (
                 <div className="game-hud" aria-live="polite" style={stageStyle}>
 
-                  {/* Top row: state badge. Only the search needs words — once
-                      the player is found the badge is a bare dot, since the
-                      framing and the timer already carry the state. */}
+                  {/* Top row: state badge. The search needs words; the round
+                      needs the live movement read-out, which used to sit over
+                      the footage; being found needs neither. */}
                   <div className="hud-top">
                     <div
-                      className={`state-badge state-${game.gameState.toLowerCase()}${isDetecting ? '' : ' state-badge-dot-only'}`}
+                      className={`state-badge state-${game.gameState.toLowerCase()}${isReadyToStart ? ' state-badge-dot-only' : ''}`}
                       id="game-state-badge"
                       title={isDetecting ? undefined : stateDescription}
                     >
                       <span className="state-dot" />
-                      {isDetecting
-                        ? <span className="state-label">Buscando al jugador…</span>
-                        : <span className="sr-only">{stateDescription}</span>}
+
+                      {isDetecting && <span className="state-label">Buscando al jugador…</span>}
+
+                      {isPlaying && (
+                        <span
+                          className="state-movement"
+                          role="meter"
+                          // Opts out of the HUD's live region: this changes
+                          // every frame and would be announced non-stop.
+                          aria-live="off"
+                          aria-label="Movimiento detectado"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(movementPercent)}
+                        >
+                          <span
+                            className="state-movement-fill"
+                            style={{
+                              width: `${movementPercent}%`,
+                              background: movementLevel,
+                            }}
+                          />
+                        </span>
+                      )}
+
+                      {!isDetecting && <span className="sr-only">{stateDescription}</span>}
                     </div>
                   </div>
 
@@ -303,7 +336,6 @@ export default function App() {
                     {isPlaying && (
                       <div className="hud-timer animate-fadeInScale">
                         <Timer timeLeft={game.timeLeft} totalSeconds={game.freezeSeconds} />
-                        <p className="timer-hint">segundos sin ser detectado</p>
                       </div>
                     )}
 
