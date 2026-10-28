@@ -1,7 +1,6 @@
 import React from 'react';
 import ReplayViewer from './ReplayViewer.jsx';
-import { getLostMessage } from '../lib/resultMessages.js';
-import { ZONE_DISPLAY_LABELS } from '../lib/constants.js';
+import { getLostTitle, formatSurvived } from '../lib/resultMessages.js';
 import './ResultScreen.css';
 
 const PARTICLE_COLORS = ['#5b9cf5', '#3dd68c', '#e8aa42', '#a78bfa', '#f472b6'];
@@ -21,38 +20,16 @@ const STATIC_PARTICLES = Array.from({ length: 10 }, (_, i) => ({
  * Victory → green pulse + confetti particles
  * Defeat  → red shake
  */
-const SIGNAL_NAMES = {
-  movement: 'el detector de movimiento',
-  gesture: 'el detector de gestos faciales',
-  blink: 'el detector de parpadeo',
-  absent: 'la pérdida de encuadre',
-};
-
-// Short tag for the replay header when no body zone is involved.
-const SIGNAL_REPLAY_LABELS = {
-  gesture: 'Gesto facial',
-  blink: 'Parpadeo',
-  absent: 'Fuera de cuadro',
-  movement: 'Movimiento',
-};
-
 export default function ResultScreen({
-  won, onRetry, freezeSeconds, infractionReason, blinkCount, vitality,
-  detectedSignal, replayData,
+  won, onFinish, freezeSeconds, infractionReason, replayData,
 }) {
   const particles = won ? STATIC_PARTICLES : [];
 
   const survivedSeconds = !won && replayData?.survivedMs != null
     ? Math.max(0, Math.min(freezeSeconds, replayData.survivedMs / 1000))
     : null;
-  const lostMessage = survivedSeconds != null
-    ? getLostMessage(survivedSeconds, freezeSeconds)
-    : null;
 
   const hasReplay = !won && replayData?.frames?.length > 1;
-  const replayLabel = replayData?.activeZone
-    ? ZONE_DISPLAY_LABELS[replayData.activeZone]
-    : SIGNAL_REPLAY_LABELS[detectedSignal];
 
   return (
     <div className={`result-screen ${won ? 'result-won' : 'result-lost'}`} id="result-screen">
@@ -93,64 +70,51 @@ export default function ResultScreen({
           </div>
         )}
 
-        {/* Headline */}
+        {/* 1 — How it went */}
         <h1 className="result-title">
-          {won ? '¡Nos engañaste!' : (lostMessage?.title ?? 'Te detectamos')}
+          {won
+            ? '¡Nos engañaste!'
+            : survivedSeconds != null
+              ? getLostTitle(survivedSeconds, freezeSeconds)
+              : 'Te detectamos'}
         </h1>
 
-        <p className="result-subtitle">
-          {won
-            ? `${freezeSeconds} segundos sin una sola señal de vida. Reclamá tu premio.`
-            : infractionReason
-            ? `${infractionReason}.`
-            : 'El sistema encontró una señal de vida.'}
-          {lostMessage && <><br />{lostMessage.subtitle}</>}
-        </p>
+        {/* 2 — How long they lasted */}
+        {won ? (
+          <p className="result-subtitle">
+            {freezeSeconds} segundos sin una sola señal de vida. Reclamá tu premio.
+          </p>
+        ) : survivedSeconds != null && (
+          <p className="result-duration">
+            <strong>{formatSurvived(survivedSeconds)}s</strong>
+            <span> de {freezeSeconds}</span>
+          </p>
+        )}
 
-        {/* What the camera saw in the seconds before the detection */}
+        {/* 3 — What gave them away. The reason already names the signal and
+            the body zone, so nothing else on this screen repeats it. */}
+        {!won && infractionReason && (
+          <p className="result-caught">{infractionReason}</p>
+        )}
+
+        {/* 4 — What the camera saw in the seconds before the detection */}
         {hasReplay && (
           <ReplayViewer
             frames={replayData.frames}
             anchorLandmarks={replayData.anchorLandmarks}
             activeZone={replayData.activeZone}
             focusIndices={replayData.focusIndices}
-            label={replayLabel}
           />
         )}
 
-        {/* What the system picked up while the round ran. Blinking is listed
-            even though it never costs the round: seeing it counted is the
-            point — the same sensing that judges the game is what tells a
-            monitor whether someone is still responsive. */}
-        {!won && detectedSignal && (
-          <p className="result-caught">
-            Te delató: <strong>{SIGNAL_NAMES[detectedSignal] ?? detectedSignal}</strong>
-          </p>
-        )}
-
-        <div className="result-signals">
-          <div className="result-signal">
-            <span className="result-signal-value">{blinkCount ?? 0}</span>
-            <span className="result-signal-label">parpadeos</span>
-          </div>
-          {vitality?.label && (
-            <div className="result-signal">
-              <span className="result-signal-value result-signal-text">
-                {vitality.label}
-              </span>
-              <span className="result-signal-label">estado vital</span>
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
+        {/* 5 — One way out: the stand moves on to the next participant. */}
         <div className="result-actions">
           <button
-            id="result-retry-btn"
+            id="result-finish-btn"
             className={`btn btn-lg ${won ? 'btn-success' : 'btn-danger'}`}
-            onClick={onRetry}
+            onClick={onFinish}
           >
-            {won ? 'Jugar de nuevo' : 'Reintentar'}
+            Terminar
           </button>
         </div>
       </div>

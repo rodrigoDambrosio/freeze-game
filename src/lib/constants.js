@@ -317,25 +317,12 @@ export const REPLAY_SIGNAL_FOCUS = {
 
 // Lost-result copy tiers, keyed by the fraction of freezeSeconds survived (0..1).
 // `max` is the upper bound of the tier (inclusive); the list is checked in order.
+// Verdict on the defeat screen, tiered by how much of the freeze was
+// survived. Each participant plays once, so these say how it went and
+// nothing more — no tier invites another attempt.
 export const LOST_MESSAGE_TIERS = [
-  {
-    max: 0.15,
-    title: '¡Uy, eso fue rápido!',
-    subtitle: 'Duraste {survived}s de {total}s. Con un poco más de foco lo lográs.',
-  },
-  {
-    max: 0.45,
-    title: 'Vas agarrando la mano',
-    subtitle: 'Aguantaste {survived}s de {total}s. Un poco más de control y ganás.',
-  },
-  {
-    max: 0.75,
-    title: '¡Ya casi!',
-    subtitle: 'Llegaste a {survived}s de {total}s — estuviste cerca.',
-  },
-  {
-    max: 1.01,
-    title: '¡A un pestañeo de ganar!',
-    subtitle: 'Te faltó nada: {survived}s de {total}s.',
-  },
+  { max: 0.15, title: 'Te detectamos enseguida' },
+  { max: 0.45, title: 'Te detectamos rápido' },
+  { max: 0.75, title: 'Aguantaste bastante' },
+  { max: 1.01, title: 'Estuviste a un paso' },
 ];

@@ -308,12 +308,14 @@ export function useGameLogic() {
     const roundBlinks = Math.max(0, (vitals.totalBlinks ?? 0) - blinkBaseRef.current);
     blinkCountRef.current = roundBlinks;
 
+    // The reason never quotes the tally: the detector can miss a blink, and a
+    // number on the result screen reads as a count we are willing to defend.
     const limit = _blinkLimit();
     if (limit !== null && roundBlinks > limit) {
       _detected(
         limit === 0
           ? 'Parpadeaste'
-          : `Parpadeaste ${roundBlinks} veces`,
+          : 'Parpadeaste más de lo permitido',
         'blink'
       );
       return;

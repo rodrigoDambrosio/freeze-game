@@ -327,12 +327,9 @@ export default function App() {
               {isResult && (
                 <ResultScreen
                   won={isWon}
-                  onRetry={game.reset}
+                  onFinish={handleBackToIdle}
                   freezeSeconds={game.freezeSeconds}
                   infractionReason={game.infractionReason}
-                  blinkCount={game.blinkCount}
-                  vitality={game.vitality}
-                  detectedSignal={game.detectedSignal}
                   replayData={game.replayData}
                 />
               )}
