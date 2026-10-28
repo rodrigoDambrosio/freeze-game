@@ -1,36 +1,41 @@
 .vm-panel {
   position: absolute;
-  top: 20px;
-  right: 16px;
+  top: 14px;
+  right: 14px;
   z-index: 30;
-  width: 290px;
-  padding: 16px;
-  border-radius: var(--radius-lg);
-  background: var(--glass-bg, rgba(16, 18, 24, 0.84));
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.12));
-  backdrop-filter: blur(14px);
+  width: 184px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 14, 26, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 11px;
+  opacity: 0.72;
+  transition: opacity 220ms ease, background-color 220ms ease;
+}
+
+/* Caught: the panel steps forward so the player can see what gave them away. */
+.vm-panel-alert,
+.vm-panel:hover {
+  opacity: 1;
+  background: rgba(10, 14, 26, 0.62);
 }
 
 .vm-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  gap: 6px;
+  margin-bottom: 9px;
 }
 
 .vm-title {
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.vm-chip {
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
@@ -42,96 +47,23 @@
   color: var(--text-secondary);
 }
 
-/* ── Overall state ─────────────────────────────────────────────────────── */
-
-.vm-state {
-  display: flex;
-  gap: 11px;
-  align-items: flex-start;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  background: rgba(127, 127, 127, 0.1);
-  border: 1px solid transparent;
-}
-
-.vm-state-dot {
-  width: 11px;
-  height: 11px;
-  margin-top: 3px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--text-muted);
-}
-
-.vm-state-title {
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.25;
-}
-
-.vm-state-detail {
-  margin-top: 2px;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-
-.vm-state-active  .vm-state-dot { background: var(--pulse); box-shadow: 0 0 10px var(--pulse); }
-.vm-state-calm    .vm-state-dot { background: var(--signal); box-shadow: 0 0 10px var(--signal); }
-.vm-state-still   .vm-state-dot { background: var(--accent-yellow); box-shadow: 0 0 10px var(--accent-yellow); }
-
-.vm-state-still .vm-state {
-  background: rgba(232, 170, 66, 0.12);
-  border-color: rgba(232, 170, 66, 0.35);
-}
-
-.vm-state-unresponsive .vm-state-dot {
-  background: var(--accent-red);
-  animation: vm-pulse 1.1s ease-in-out infinite;
-}
-
-.vm-state-unresponsive .vm-state {
-  background: rgba(224, 92, 92, 0.15);
-  border-color: rgba(224, 92, 92, 0.5);
-}
-
-@keyframes vm-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 92, 92, 0.6); }
-  50%      { box-shadow: 0 0 0 7px rgba(224, 92, 92, 0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .vm-state-unresponsive .vm-state-dot { animation: none; }
-}
-
-.vm-still {
-  margin: 10px 0 2px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-.vm-still strong { color: var(--text-primary); }
-.vm-still-limit { color: var(--text-muted); }
-
 /* ── Individual signals ────────────────────────────────────────────────── */
 
 .vm-signals {
-  margin-top: 12px;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 7px;
 }
 
 .vm-det {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
 }
 
 .vm-det-dot {
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   flex: none;
   background: var(--text-muted);
@@ -151,12 +83,12 @@
 }
 
 .vm-det-label {
-  font-size: 12px;
+  font-size: 10.5px;
   color: var(--text-secondary);
 }
 
 .vm-det-value {
-  font-size: 12px;
+  font-size: 10.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -165,45 +97,37 @@
 .vm-det-pending .vm-det-value { color: var(--text-muted); font-weight: 400; }
 
 .vm-det-hint {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
   white-space: nowrap;
 }
 
-.vm-signal-extra { display: flex; flex-direction: column; gap: 4px; }
+.vm-signal-extra { display: flex; flex-direction: column; gap: 3px; }
 
 .vm-meter {
   position: relative;
-  height: 4px;
-  margin-left: 16px;
-  border-radius: 2px;
-  background: rgba(127, 127, 127, 0.2);
+  height: 2px;
+  margin-left: 12px;
+  border-radius: 1px;
+  background: rgba(127, 127, 127, 0.16);
   overflow: hidden;
 }
 
 .vm-meter-fill {
   height: 100%;
   background: var(--signal);
-  border-radius: 2px;
+  border-radius: 1px;
+  opacity: 0.75;
   transition: width 120ms linear;
 }
 
 .vm-meter-mark {
   position: absolute;
-  top: -1px;
-  bottom: -1px;
+  top: 0;
+  bottom: 0;
   width: 1px;
   background: var(--text-muted);
-  opacity: 0.8;
-}
-
-.vm-disclaimer {
-  margin: 14px 0 0;
-  padding-top: 11px;
-  border-top: 1px solid var(--border-subtle);
-  font-size: 10px;
-  line-height: 1.5;
-  color: var(--text-muted);
+  opacity: 0.55;
 }
 
 @media (max-width: 860px) {
@@ -211,6 +135,7 @@
     position: static;
     width: auto;
     margin: 12px;
+    opacity: 1;
   }
 }
 
@@ -244,17 +169,19 @@
 .vm-det-hint { color: var(--accent-red); font-weight: 600; }
 
 .vm-count {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(224, 92, 92, 0.18);
+  background: rgba(224, 92, 92, 0.16);
   color: var(--accent-red);
+  white-space: nowrap;
 }
 
 .vm-count-clear {
-  background: rgba(61, 214, 140, 0.18);
-  color: var(--pulse);
+  background: transparent;
+  padding: 1px 0;
+  color: var(--text-muted);
 }
 
 .vm-meter-over { background: var(--accent-red); }

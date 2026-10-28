@@ -166,14 +166,11 @@ export default function CameraView({
           <span className="hud-corner br" />
         </div>
 
-        {/* Scanning status overlay when searching for player */}
+        {/* Scanning sweep while searching for the player. The HUD badge is the
+            only place that says so in words. */}
         {gameState === 'DETECTING' && (
           <div className="camera-status-overlay">
             <div className="scanning-line" />
-            <div className="camera-status-pill animate-fadeIn">
-              <span className="dot-pulse" />
-              Buscando persona en cámara…
-            </div>
           </div>
         )}
 

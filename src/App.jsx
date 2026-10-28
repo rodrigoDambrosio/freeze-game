@@ -150,7 +150,8 @@ export default function App() {
   }, [handleDeactivateCamera, game]);
 
   // ── Derived state ────────────────────────────────────────────────────────
-  const isPlaying = game.gameState === GAME_STATE.PLAYING;
+  const isPlaying   = game.gameState === GAME_STATE.PLAYING;
+  const isDetecting = game.gameState === GAME_STATE.DETECTING;
   const isWon     = game.gameState === GAME_STATE.WON;
   const isLost    = game.gameState === GAME_STATE.LOST;
   const isResult  = isWon || isLost;
@@ -158,6 +159,10 @@ export default function App() {
     .includes(game.gameState);
 
   const sensitivityThreshold = SENSITIVITY_LEVELS[game.sensitivity].threshold;
+
+  // The badge shows no text past the search, so screen readers get the state
+  // from here instead.
+  const stateDescription = isPlaying ? 'Partida en curso' : 'Jugador detectado';
 
   const stageStyle = {
     top: stageInset.top,
@@ -183,13 +188,9 @@ export default function App() {
                 ¿Podés <strong>engañar</strong> al sistema?
               </h1>
               <p className="idle-description">
-                Durante <strong>{game.freezeSeconds} segundos</strong>, evitá que
-                {' '}<strong>C.U.I.D.A.</strong> detecte movimiento o gestos.
-                Se permiten algunos parpadeos; la respiración se muestra como
-                señal informativa.
-              </p>
-              <p className="idle-prize">
-                Nadie lo logró todavía. Si lo conseguís, te llevás el premio.
+                <span className="idle-duration">{game.freezeSeconds}</span>
+                <span className="idle-duration-unit">segundos</span>
+                sin que C.U.I.D.A. detecte una sola señal de vida
               </p>
             </div>
 
@@ -209,12 +210,12 @@ export default function App() {
               {pose.isLoading ? (
                 <div className="loading-indicator">
                   <div className="spinner" />
-                  <span>Cargando modelo de detección…</span>
+                  <span>Preparando el desafío…</span>
                 </div>
               ) : (
                 <button
-                  id="activate-camera-btn"
-                  className="btn btn-primary btn-lg"
+                  id="start-challenge-btn"
+                  className="btn btn-primary btn-lg idle-cta"
                   onClick={handleActivateCamera}
                   disabled={camera.isStarting}
                 >
@@ -224,15 +225,11 @@ export default function App() {
                       Iniciando…
                     </>
                   ) : (
-                    <>Activar cámara</>
+                    <>Iniciar desafío</>
                   )}
                 </button>
               )}
             </div>
-
-            <p className="idle-cuida-tagline">
-              C.U.I.D.A. — Sistema de monitoreo inteligente de adultos mayores
-            </p>
           </section>
         )}
 
@@ -261,7 +258,7 @@ export default function App() {
                   />
                 )}
 
-                {!isResult && (
+                {isPlaying && (
                   <VitalityMonitor
                     reading={game.vitality}
                     faceLoading={face.isLoading || (!face.isModelReady && !face.loadError)}
@@ -284,45 +281,29 @@ export default function App() {
               {!isResult && (
                 <div className="game-hud" aria-live="polite" style={stageStyle}>
 
-                  {/* Top row: state badge */}
+                  {/* Top row: state badge. Only the search needs words — once
+                      the player is found the badge is a bare dot, since the
+                      framing and the timer already carry the state. */}
                   <div className="hud-top">
-                    <div className={`state-badge state-${game.gameState.toLowerCase()}`} id="game-state-badge">
+                    <div
+                      className={`state-badge state-${game.gameState.toLowerCase()}${isDetecting ? '' : ' state-badge-dot-only'}`}
+                      id="game-state-badge"
+                      title={isDetecting ? undefined : stateDescription}
+                    >
                       <span className="state-dot" />
-                      <span className="state-label">
-                        {game.gameState === GAME_STATE.DETECTING && 'Buscando jugador…'}
-                        {game.gameState === GAME_STATE.READY     && 'Listo — te estamos viendo'}
-                        {game.gameState === GAME_STATE.PLAYING   && 'Intentá no ser detectado'}
-                      </span>
+                      {isDetecting
+                        ? <span className="state-label">Buscando al jugador…</span>
+                        : <span className="sr-only">{stateDescription}</span>}
                     </div>
                   </div>
 
-                  {/* Bottom: timer / instructions / buttons */}
+                  {/* Bottom: timer / buttons */}
                   <div className="hud-bottom">
                     {/* Timer (PLAYING) */}
                     {isPlaying && (
                       <div className="hud-timer animate-fadeInScale">
                         <Timer timeLeft={game.timeLeft} totalSeconds={game.freezeSeconds} />
                         <p className="timer-hint">segundos sin ser detectado</p>
-                      </div>
-                    )}
-
-                    {/* Instructions (DETECTING / READY) */}
-                    {!isPlaying && (
-                      <div className="hud-instructions animate-fadeIn glass">
-                        {game.gameState === GAME_STATE.DETECTING && (
-                          <>
-                            <ScanIcon />
-                            <p>Colocate frente a la cámara</p>
-                            <p className="instruction-sub">El sistema necesita verte antes de empezar</p>
-                          </>
-                        )}
-                        {game.gameState === GAME_STATE.READY && (
-                          <>
-                            <ReadyIcon />
-                            <p>Te encontramos</p>
-                            <p className="instruction-sub">A partir de ahora, intentá desaparecer</p>
-                          </>
-                        )}
                       </div>
                     )}
 
@@ -363,24 +344,3 @@ export default function App() {
   );
 }
 
-/* ── Inline SVG icons for HUD instructions ── */
-function ScanIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="hud-instr-icon" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M3 9V5a2 2 0 0 1 2-2h4" />
-      <path d="M21 9V5a2 2 0 0 0-2-2h-4" />
-      <path d="M3 15v4a2 2 0 0 0 2 2h4" />
-      <path d="M21 15v4a2 2 0 0 1-2 2h-4" />
-    </svg>
-  );
-}
-
-function ReadyIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="hud-instr-icon" style={{ color: 'var(--pulse)' }} aria-hidden="true">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
-  );
-}

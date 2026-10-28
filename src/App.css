@@ -28,10 +28,10 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  max-width: 640px;
+  max-width: 720px;
   margin: 0 auto;
   text-align: center;
-  gap: 32px;
+  gap: 34px;
   z-index: 10;
 }
 
@@ -39,48 +39,83 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 18px;
+  position: relative;
+}
+
+/* Glow behind the headline — gives the screen a focal point from across
+   a stand without adding another element to read. */
+.idle-hero::before {
+  content: '';
+  position: absolute;
+  inset: -40% -20%;
+  background: radial-gradient(ellipse at center, rgba(91, 156, 245, 0.16) 0%, transparent 65%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .idle-title {
-  font-size: clamp(3rem, 7vw, 4.5rem);
-  font-weight: 300;
-  letter-spacing: -0.04em;
-  line-height: 1.0;
+  font-size: clamp(2.25rem, 5.5vw, 3.5rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
   color: var(--bone);
 }
 
 .idle-title strong {
   font-weight: 700;
   color: var(--signal);
+  text-shadow: 0 0 28px rgba(91, 156, 245, 0.45);
 }
 
 .idle-description {
-  font-size: 1.1rem;
-  line-height: 1.65;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0 9px;
+  font-size: 1.05rem;
+  line-height: 1.5;
   color: var(--slate);
-  max-width: 480px;
+  max-width: 460px;
   font-weight: 400;
 }
 
-.idle-description strong {
-  color: var(--bone);
+/* The duration is the one number a passer-by needs to grasp the dare. */
+.idle-duration {
+  font-size: 2.1rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-primary);
+  letter-spacing: -0.03em;
+}
+
+.idle-duration-unit {
   font-weight: 600;
+  color: var(--text-primary);
 }
 
 .idle-actions {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
-.idle-cuida-tagline {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  letter-spacing: 0.03em;
-  max-width: 420px;
-  line-height: 1.5;
+/* Attract state: a slow halo so the idle screen reads as live, not frozen. */
+.idle-cta {
+  font-size: 1.15rem;
+  padding: 16px 44px;
+  animation: idle-cta-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes idle-cta-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(91, 156, 245, 0.42); }
+  50%      { box-shadow: 0 0 26px 7px rgba(91, 156, 245, 0.16); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .idle-cta { animation: none; }
 }
 
 /* ─── Game layout — camera fullscreen ─── */
@@ -164,10 +199,18 @@
 .state-detecting { border-color: rgba(91, 156, 245, 0.3); }
 
 .state-ready .state-dot {
-  background: var(--accent-yellow);
+  background: var(--pulse);
+  box-shadow: 0 0 8px var(--pulse);
   animation: pulse-dot 1.8s ease-in-out infinite;
 }
-.state-ready { border-color: rgba(232, 170, 66, 0.3); }
+.state-ready { border-color: rgba(61, 214, 140, 0.35); }
+
+/* Label-dropped badge: a round chip holding just the dot. */
+.state-badge-dot-only {
+  padding: 9px;
+  gap: 0;
+  border-radius: 50%;
+}
 
 .state-playing .state-dot {
   background: var(--pulse);
@@ -205,41 +248,6 @@
   letter-spacing: 0.03em;
   font-weight: 400;
   text-shadow: 0 1px 4px rgba(0,0,0,0.5);
-}
-
-/* Instructions block */
-.hud-instructions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 6px;
-  padding: 14px 20px;
-  border-radius: var(--radius-md);
-  background: rgba(10, 14, 26, 0.65);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  max-width: 320px;
-}
-
-.hud-instr-icon {
-  color: var(--signal);
-  margin-bottom: 2px;
-}
-
-.hud-instructions p {
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--bone);
-  line-height: 1.3;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
-}
-
-.instruction-sub {
-  font-size: 0.8rem !important;
-  font-weight: 400 !important;
-  color: var(--slate) !important;
-  line-height: 1.4;
 }
 
 /* Action buttons */
@@ -290,11 +298,4 @@
 /* Responsive */
 @media (max-width: 600px) {
   .game-layout { margin: -16px -16px -16px; }
-}
-
-.idle-prize {
-  margin-top: 10px;
-  font-size: 14px;
-  font-weight: 550;
-  color: var(--accent-yellow);
 }

@@ -1,5 +1,4 @@
 import React from 'react';
-import { VITALITY_STATE } from '../lib/vitalityAnalyzer.js';
 import {
   EXPRESSION_ACTIVE_STD,
   HEAD_MOTION_ACTIVE,
@@ -14,32 +13,9 @@ import './VitalityMonitor.css';
  * nothing — the player is winning that one. Red means it found them.
  *
  * Each signal keeps its own row rather than being rolled into one number,
- * because which one gives a player away is the interesting part. Nearly
- * everyone can hold still; almost nobody can stop breathing.
+ * because which one gives a player away is the interesting part. Holding a
+ * pose is the easy half; suppressing the face is what catches people.
  */
-
-const STATE_COPY = {
-  [VITALITY_STATE.NO_SIGNAL]: {
-    title: 'Sin señal',
-    detail: 'No hay nadie en el encuadre.',
-  },
-  [VITALITY_STATE.ACTIVE]: {
-    title: 'Claramente con vida',
-    detail: 'Movimiento evidente. Así es imposible.',
-  },
-  [VITALITY_STATE.CALM]: {
-    title: 'Con vida',
-    detail: 'El sistema sigue encontrando señales.',
-  },
-  [VITALITY_STATE.STILL]: {
-    title: 'Casi indetectable',
-    detail: 'Sin signos de consciencia. Queda la señal corporal.',
-  },
-  [VITALITY_STATE.UNRESPONSIVE]: {
-    title: 'Indetectable',
-    detail: 'El sistema no encuentra señales de vida.',
-  },
-};
 
 /**
  * One detector's row.
@@ -92,9 +68,6 @@ export default function VitalityMonitor({
     );
   }
 
-  const state = reading?.state ?? VITALITY_STATE.NO_SIGNAL;
-  const copy = STATE_COPY[state];
-
   const expression = reading?.expressionActivity ?? 0;
   const head = reading?.headActivity ?? 0;
   const blinkFound = blinkLimit !== null && blinkCount > blinkLimit;
@@ -109,20 +82,14 @@ export default function VitalityMonitor({
   ].filter(Boolean).length;
 
   return (
-    <div className={`vm-panel vm-state-${state.toLowerCase()}`}>
+    // The panel sits back while the player is getting away with it and only
+    // comes forward once a detector has them.
+    <div className={`vm-panel ${found > 0 ? 'vm-panel-alert' : ''}`}>
       <div className="vm-head">
         <span className="vm-title">Detectores</span>
         <span className={`vm-count ${found === 0 ? 'vm-count-clear' : ''}`}>
           {found === 0 ? 'ninguno te ve' : `${found} te detecta${found > 1 ? 'n' : ''}`}
         </span>
-      </div>
-
-      <div className="vm-state">
-        <span className="vm-state-dot" />
-        <div>
-          <div className="vm-state-title">{copy.title}</div>
-          <div className="vm-state-detail">{copy.detail}</div>
-        </div>
       </div>
 
       <div className="vm-signals">
@@ -168,12 +135,6 @@ export default function VitalityMonitor({
           <Meter value={expression} threshold={EXPRESSION_ACTIVE_STD} />
         </div>
       </div>
-
-      <p className="vm-disclaimer">
-        Estos mismos detectores, en C.U.I.D.A., avisan cuando una persona deja
-        de dar señales. Es una demostración del enfoque de sensado, no un
-        dispositivo médico.
-      </p>
     </div>
   );
 }
