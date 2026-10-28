@@ -25,7 +25,6 @@ const SIGNAL_NAMES = {
   movement: 'el detector de movimiento',
   gesture: 'el detector de gestos faciales',
   blink: 'el detector de parpadeo',
-  breathing: 'el detector de respiración',
   absent: 'la pérdida de encuadre',
 };
 
@@ -33,7 +32,6 @@ const SIGNAL_NAMES = {
 const SIGNAL_REPLAY_LABELS = {
   gesture: 'Gesto facial',
   blink: 'Parpadeo',
-  breathing: 'Respiración',
   absent: 'Fuera de cuadro',
   movement: 'Movimiento',
 };
@@ -135,18 +133,6 @@ export default function ResultScreen({
             <span className="result-signal-value">{blinkCount ?? 0}</span>
             <span className="result-signal-label">parpadeos</span>
           </div>
-          {vitality?.breathingDetected && (
-            <div className="result-signal">
-              <span className="result-signal-value">
-                {vitality.rateKnown && vitality.breathingRate !== null
-                  ? vitality.breathingRate.toFixed(0)
-                  : 'detectada'}
-              </span>
-              <span className="result-signal-label">
-                {vitality.rateKnown ? 'respiraciones / min' : 'respiración'}
-              </span>
-            </div>
-          )}
           {vitality?.label && (
             <div className="result-signal">
               <span className="result-signal-value result-signal-text">

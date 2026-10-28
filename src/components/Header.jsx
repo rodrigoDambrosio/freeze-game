@@ -57,14 +57,7 @@ export default function Header({ theme, onToggleTheme, onBack }) {
 
         <div className="header-brand">
           <div className="header-logo">
-            <svg width="30" height="30" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-              <circle cx="20" cy="20" r="18" stroke="var(--signal)" strokeWidth="1.8" fill="rgba(91,156,245,0.07)" />
-              <path d="M20 10 C14 10, 10 15, 10 20 C10 26, 14 30, 20 30" stroke="var(--signal)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-              <path d="M20 10 C26 10, 30 15, 30 20 C30 26, 26 30, 20 30" stroke="var(--pulse)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-              <circle cx="20" cy="20" r="3" fill="var(--signal)" />
-              <circle cx="20" cy="12" r="1.8" fill="var(--signal)" opacity="0.6" />
-              <circle cx="20" cy="28" r="1.8" fill="var(--pulse)" opacity="0.6" />
-            </svg>
+            <img src="/cuida-logo.png" alt="" width="30" height="30" aria-hidden="true" />
           </div>
           <div className="header-text">
             <span className="header-title">C.U.I.D.A.</span>

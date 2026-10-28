@@ -60,7 +60,6 @@ export default function App() {
       game.setSensitivity(settings.sensitivity);
       game.setDetectGestures(settings.detectGestures);
       game.setDetectBlink(settings.detectBlink);
-      game.setDetectBreathing(settings.detectBreathing);
       game.setBlinkBudget(settings.blinkBudget);
     };
     apply(readSettings());
@@ -270,7 +269,6 @@ export default function App() {
                     gestureThreshold={SENSITIVITY_LEVELS[game.sensitivity].gestureThreshold}
                     detectGestures={game.detectGestures}
                     detectBlink={game.detectBlink}
-                    detectBreathing={game.detectBreathing}
                     blinkCount={game.blinkCount}
                     blinkLimit={game.blinkLimit}
                   />

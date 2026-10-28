@@ -3,7 +3,6 @@ import { VITALITY_STATE } from '../lib/vitalityAnalyzer.js';
 import {
   EXPRESSION_ACTIVE_STD,
   HEAD_MOTION_ACTIVE,
-  BREATHING_AMPLITUDE_THRESHOLD,
 } from '../lib/constants.js';
 import './VitalityMonitor.css';
 
@@ -78,7 +77,7 @@ function Meter({ value, threshold }) {
 
 export default function VitalityMonitor({
   reading, faceLoading, gestureDrift = 0, gestureThreshold = 1,
-  detectGestures = true, detectBlink = true, detectBreathing = true,
+  detectGestures = true, detectBlink = true,
   blinkCount = 0, blinkLimit = null,
 }) {
   if (faceLoading) {
@@ -98,10 +97,6 @@ export default function VitalityMonitor({
 
   const expression = reading?.expressionActivity ?? 0;
   const head = reading?.headActivity ?? 0;
-  const breathAmp = reading?.breathAmplitude ?? 0;
-  const breathFound = reading?.breathingDetected ?? false;
-  const breathReady = reading?.breathingReady ?? false;
-
   const blinkFound = blinkLimit !== null && blinkCount > blinkLimit;
   const gestureFound = gestureDrift > gestureThreshold;
   const headFound = head > HEAD_MOTION_ACTIVE;
@@ -110,7 +105,6 @@ export default function VitalityMonitor({
   const found = [
     detectBlink && blinkFound,
     detectGestures && gestureFound,
-    detectBreathing && breathFound,
     headFound,
   ].filter(Boolean).length;
 
@@ -163,25 +157,6 @@ export default function VitalityMonitor({
             hint={headFound ? 'te delató' : null}
           />
           <Meter value={head} threshold={HEAD_MOTION_ACTIVE} />
-        </div>
-
-        <div className="vm-signal-extra">
-          <Detector
-            label="Respiración"
-            disabled={!detectBreathing}
-            found={breathFound}
-            pending={!breathReady}
-            value={
-              !breathReady ? 'midiendo…'
-                : reading?.rateKnown ? `${reading.breathingRate.toFixed(0)} /min`
-                : breathFound ? 'detectada'
-                : 'no detectada'
-            }
-            hint={breathFound ? 'te delató' : null}
-          />
-          {detectBreathing && (
-            <Meter value={breathAmp} threshold={BREATHING_AMPLITUDE_THRESHOLD} />
-          )}
         </div>
 
         <div className="vm-signal-extra">

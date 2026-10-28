@@ -42,15 +42,13 @@ function writeJSON(key, value) {
   }
 }
 
-// Facial gestures and blinks are armed by default; breathing is shown but
-// not penalised, since a normal human could never win a presentation round
-// with it on. A few involuntary blinks are tolerated in the default round.
+// Facial gestures and blinks are armed by default. A few involuntary blinks
+// are tolerated in the default round.
 export const DEFAULT_SETTINGS = {
   freezeSeconds: DEFAULT_FREEZE_SECONDS,
   sensitivity: DEFAULT_SENSITIVITY,
   detectGestures: true,
   detectBlink: true,
-  detectBreathing: false,
   blinkBudget: 3,
 };
 
@@ -66,7 +64,7 @@ export function sanitizeSettings(raw) {
     s.freezeSeconds = Math.min(MAX_FREEZE_SECONDS, Math.max(MIN_FREEZE_SECONDS, Math.round(raw.freezeSeconds)));
   }
   if (Object.hasOwn(SENSITIVITY_LEVELS, raw.sensitivity)) s.sensitivity = raw.sensitivity;
-  for (const key of ['detectGestures', 'detectBlink', 'detectBreathing']) {
+  for (const key of ['detectGestures', 'detectBlink']) {
     if (typeof raw[key] === 'boolean') s[key] = raw[key];
   }
   if (Number.isInteger(raw.blinkBudget) && raw.blinkBudget >= 0) s.blinkBudget = raw.blinkBudget;

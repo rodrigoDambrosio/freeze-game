@@ -72,7 +72,7 @@ export default function AdminScreen() {
     return () => clearInterval(id);
   }, []);
 
-  const { freezeSeconds, sensitivity, detectGestures, detectBlink, detectBreathing, blinkBudget } = settings;
+  const { freezeSeconds, sensitivity, detectGestures, detectBlink, blinkBudget } = settings;
 
   const isConnected = !!telemetry && now - telemetry.ts < TELEMETRY_STALE_MS;
   const movementScore = isConnected ? telemetry.movementScore ?? 0 : 0;
@@ -179,22 +179,6 @@ export default function AdminScreen() {
               <span className="admin-toggle-name">Penalizar gestos faciales</span>
               <span className="admin-toggle-desc">
                 Sonreír, abrir la boca o levantar las cejas termina la ronda.
-              </span>
-            </span>
-          </label>
-
-          <label className="admin-toggle">
-            <input
-              type="checkbox"
-              id="detect-breathing"
-              checked={detectBreathing}
-              onChange={(e) => update({ detectBreathing: e.target.checked })}
-            />
-            <span className="admin-toggle-body">
-              <span className="admin-toggle-name">Detectar respiración</span>
-              <span className="admin-toggle-desc">
-                La señal más difícil de suprimir, y la que casi nadie logra
-                ocultar. Desactivala para que el desafío sea ganable.
               </span>
             </span>
           </label>

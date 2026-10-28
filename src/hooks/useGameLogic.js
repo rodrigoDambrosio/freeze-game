@@ -56,7 +56,6 @@ export function useGameLogic() {
   const [sensitivity, setSensitivity] = useState(DEFAULT_SENSITIVITY);
   const [detectGestures, setDetectGestures] = useState(DEFAULT_SETTINGS.detectGestures);
   const [detectBlink, setDetectBlink] = useState(DEFAULT_SETTINGS.detectBlink);
-  const [detectBreathing, setDetectBreathing] = useState(DEFAULT_SETTINGS.detectBreathing);
   // Blinks tolerated before the player is given away. 0 = none.
   const [blinkBudget, setBlinkBudget] = useState(DEFAULT_SETTINGS.blinkBudget);
 
@@ -83,7 +82,6 @@ export function useGameLogic() {
   const sensitivityRef = useRef(sensitivity);
   const detectGesturesRef = useRef(detectGestures);
   const detectBlinkRef = useRef(detectBlink);
-  const detectBreathingRef = useRef(detectBreathing);
   const blinkBudgetRef = useRef(blinkBudget);
   // Blink tally captured when the round starts, so only this round counts.
   const blinkBaseRef = useRef(0);
@@ -139,10 +137,6 @@ export function useGameLogic() {
   useEffect(() => {
     detectBlinkRef.current = detectBlink;
   }, [detectBlink]);
-
-  useEffect(() => {
-    detectBreathingRef.current = detectBreathing;
-  }, [detectBreathing]);
 
   /** Blinks tolerated this round, or null when blinking is not watched. */
   const _blinkLimit = useCallback(() => {
@@ -322,17 +316,6 @@ export function useGameLogic() {
           : `Parpadeaste ${roundBlinks} veces`,
         'blink'
       );
-      return;
-    }
-
-    // Breathing is the hardest sign to suppress and the one the system is
-    // proudest of. Presence answers in about one cycle; the rate, once the
-    // long window has filled, names the number out loud.
-    if (detectBreathingRef.current && vitals.breathingDetected) {
-      const detail = vitals.rateKnown
-        ? `Respiración detectada (${vitals.breathingRate.toFixed(0)}/min)`
-        : 'Respiración detectada';
-      _detected(detail, 'breathing');
       return;
     }
 
@@ -526,8 +509,6 @@ export function useGameLogic() {
     blinkLimit: _blinkLimit(),
     detectBlink,
     setDetectBlink,
-    detectBreathing,
-    setDetectBreathing,
     detectedSignal: detectedSignalRef.current,
     // Config
     freezeSeconds,

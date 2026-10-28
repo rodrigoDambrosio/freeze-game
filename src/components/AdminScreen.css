@@ -1,8 +1,28 @@
 .admin-page {
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 24px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  scrollbar-width: thin;
+}
+
+.admin-page::-webkit-scrollbar {
+  width: 8px;
+}
+
+.admin-page::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.admin-page::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+}
+
+.admin-page::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .admin-screen {
@@ -11,7 +31,8 @@
   padding: 0;
   overflow: hidden;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-  margin: auto 0;
+  margin: 0 auto;
+  flex-shrink: 0;
 }
 
 .admin-header {
