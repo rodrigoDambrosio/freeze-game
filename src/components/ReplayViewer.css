@@ -20,15 +20,6 @@
   color: var(--slate);
 }
 
-.replay-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-red);
-  box-shadow: 0 0 6px var(--accent-red);
-  animation: pulse-dot 1.4s ease-in-out infinite;
-}
-
 .replay-canvas {
   width: 100%;
   height: auto;
@@ -38,4 +29,70 @@
   background: #05070d;
   border: 1px solid var(--border-subtle);
   transform: scaleX(-1); /* mirror to match the selfie-style camera view */
+}
+
+/* ── Timeline: the window being replayed, ending at the detection ── */
+.replay-timeline {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+}
+
+.replay-timeline-track {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.replay-timeline-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  background: var(--signal);
+}
+
+.replay-timeline-end {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-red);
+  white-space: nowrap;
+}
+
+/* ── Legend: what the two overlays mean ── */
+.replay-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.replay-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.replay-legend-swatch {
+  width: 14px;
+  height: 0;
+  flex: none;
+  border-top-width: 2px;
+}
+
+.replay-legend-ghost {
+  border-top-style: dashed;
+  border-top-color: rgba(232, 228, 223, 0.65);
+}
+
+.replay-legend-moved {
+  border-top-style: solid;
+  border-top-color: var(--accent-red);
 }

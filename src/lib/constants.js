@@ -295,7 +295,8 @@ export const BREATHING_AMPLITUDE_THRESHOLD = 0.006;
 // the moments leading into the detection.
 export const REPLAY_BUFFER_MS = 3500;
 export const REPLAY_PLAYBACK_RATE = 0.6; // slow-motion factor for legibility
-export const REPLAY_HOLD_MS = 700;       // pause on the final frame before looping
+export const REPLAY_HOLD_MS = 1600;      // pause on the final frame before looping
+export const REPLAY_ZOOM_SCALE = 1.9;    // push-in on the telltale zone during the hold
 
 export const REPLAY_ZONE_COLOR = '#ff6b6b';
 export const REPLAY_GHOST_COLOR = 'rgba(232, 228, 223, 0.4)';

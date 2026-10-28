@@ -13,8 +13,20 @@ import {
   MIN_LANDMARK_VISIBILITY,
 } from './constants.js';
 
-// Looser than the analyzer's gate: the replay is a picture, not a measurement.
-const DRAW_MIN_VISIBILITY = 0.35;
+// Stricter than the analyzer's gate, and for the opposite reason: the analyzer
+// can afford a noisy landmark because it averages over a zone, while a single
+// invented joint drawn on screen is read by the player as something the system
+// claims to have seen. With a head-and-shoulders framing MediaPipe still emits
+// hips and legs with middling confidence, so they are dropped here.
+const DRAW_MIN_VISIBILITY = 0.62;
+
+// Landmarks outside the frame are extrapolated, never observed.
+const FRAME_MARGIN = 0.02;
+
+function isInFrame(lm) {
+  return lm.x >= -FRAME_MARGIN && lm.x <= 1 + FRAME_MARGIN
+    && lm.y >= -FRAME_MARGIN && lm.y <= 1 + FRAME_MARGIN;
+}
 
 const SKELETON_CONNECTIONS = [
   // Head wireframe
@@ -44,7 +56,7 @@ function getZoneForIndex(idx) {
 }
 
 function isDrawable(lm) {
-  return !!lm && (lm.visibility ?? 1) >= DRAW_MIN_VISIBILITY;
+  return !!lm && (lm.visibility ?? 1) >= DRAW_MIN_VISIBILITY && isInFrame(lm);
 }
 
 /**
@@ -102,39 +114,137 @@ export function drawReplaySkeleton(ctx, landmarks, W, H, color = '#5b9cf5', opti
 }
 
 /**
- * Draw a pulsing "radar ping" halo centered on `center` (normalized coords).
- * `t` is a free-running clock in ms, so the halo keeps moving even while the
- * replay holds on its last frame.
+ * The path the telltale joint actually travelled through the replayed window,
+ * faint where it started and solid at the instant of the detection.
+ *
+ * This replaces a pulsing marker on the same spot: the marker only said
+ * "here", while the trail is the measurement itself — proof the player was
+ * never still, drawn from the same landmarks the detector read.
+ *
+ * `upTo` lets the trail draw itself as the footage plays.
  */
-export function drawPulsingHalo(ctx, center, W, H, color = '#ff6b6b', t = 0) {
-  if (!center) return;
-
-  const x = center.x * W;
-  const y = center.y * H;
-  const minRadius = 10;
-  const maxRadius = 34;
-  const cyclesMs = 1100;
+export function drawMotionTrail(ctx, points, W, H, color = '#ff6b6b', upTo = Infinity) {
+  if (!points || points.length < 2) return;
+  const n = Math.max(2, Math.min(points.length, Math.round(upTo)));
 
   ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
   ctx.shadowColor = color;
-  ctx.shadowBlur = 14;
-  for (let i = 0; i < 2; i++) {
-    const phase = (((t + i * (cyclesMs / 2)) % cyclesMs) / cyclesMs);
-    const radius = minRadius + (maxRadius - minRadius) * phase;
+  ctx.shadowBlur = 6;
+  ctx.strokeStyle = color;
+
+  for (let i = 1; i < n; i++) {
+    const age = i / (n - 1); // 0 = oldest sample, 1 = the detection
     ctx.beginPath();
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.85 * (1 - phase);
-    ctx.lineWidth = 3;
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.12 + 0.78 * age;
+    ctx.lineWidth = 1.2 + 2.3 * age;
+    ctx.moveTo(points[i - 1].x * W, points[i - 1].y * H);
+    ctx.lineTo(points[i].x * W, points[i].y * H);
     ctx.stroke();
   }
 
+  const head = points[n - 1];
   ctx.globalAlpha = 1;
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+  ctx.arc(head.x * W, head.y * H, 4.5, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
+
+/**
+ * Darken everything but the area around `center`, so the eye goes where the
+ * detection happened without anything being drawn on top of it.
+ *
+ * The rect is deliberately oversized: this runs inside the zoom transform,
+ * where the canvas corners sit outside 0..W/0..H.
+ */
+export function drawFocusVignette(ctx, center, W, H, strength = 0.6) {
+  if (!center || strength <= 0) return;
+
+  const cx = center.x * W;
+  const cy = center.y * H;
+  const gradient = ctx.createRadialGradient(
+    cx, cy, Math.min(W, H) * 0.16,
+    cx, cy, Math.max(W, H) * 0.62,
+  );
+  gradient.addColorStop(0, 'rgba(5, 7, 13, 0)');
+  gradient.addColorStop(1, `rgba(5, 7, 13, ${strength})`);
+
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.fillRect(-W, -H, W * 3, H * 3);
+  ctx.restore();
+}
+
+/**
+ * Arrows from where each joint started to where it was when the system called
+ * it. This is the whole point of the replay: the footage shows someone who
+ * looks still, and these show the displacement that did not look like much but
+ * crossed the threshold.
+ *
+ * Drawn at true scale — never stretched to be easier to see, since the length
+ * is the evidence. The viewer zooms instead.
+ */
+export function drawDisplacementVectors(ctx, current, anchor, W, H, indices, color = '#ff6b6b', alpha = 1) {
+  if (!current || !anchor || !indices?.length || alpha <= 0) return;
+
+  // Below this the arrow is shorter than its own head and reads as a smudge.
+  const MIN_VISIBLE_DELTA = 0.004;
+
+  ctx.save();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+
+  for (const idx of indices) {
+    const curr = current[idx];
+    const prev = anchor[idx];
+    if (!isDrawable(curr) || !isDrawable(prev)) continue;
+    if (Math.hypot(curr.x - prev.x, curr.y - prev.y) < MIN_VISIBLE_DELTA) continue;
+
+    const x0 = prev.x * W;
+    const y0 = prev.y * H;
+    const x1 = curr.x * W;
+    const y1 = curr.y * H;
+    const angle = Math.atan2(y1 - y0, x1 - x0);
+    const head = 9;
+
+    ctx.globalAlpha = 0.95 * alpha;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 - head * Math.cos(angle - Math.PI / 7), y1 - head * Math.sin(angle - Math.PI / 7));
+    ctx.lineTo(x1 - head * Math.cos(angle + Math.PI / 7), y1 - head * Math.sin(angle + Math.PI / 7));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Zoom the canvas around `center` (normalized), clamped so the view never
+ * runs past the edges of the footage and shows empty canvas.
+ */
+export function applyZoom(ctx, center, scale, W, H) {
+  if (!center || scale <= 1) return;
+
+  const halfW = W / (2 * scale);
+  const halfH = H / (2 * scale);
+  const cx = Math.min(W - halfW, Math.max(halfW, center.x * W));
+  const cy = Math.min(H - halfH, Math.max(halfH, center.y * H));
+
+  ctx.translate(W / 2, H / 2);
+  ctx.scale(scale, scale);
+  ctx.translate(-cx, -cy);
 }
 
 /** Mean position of the drawable landmarks in `indices`, or null. */
