@@ -15,6 +15,9 @@
   /* contain (not cover): the full capture must always be visible, even if
      that means black bars on the sides/top instead of cropping the frame. */
   object-fit: contain;
+}
+
+.camera-video.mirrored {
   transform: scaleX(-1); /* Mirror for selfie-style */
 }
 
@@ -25,8 +28,11 @@
   height: 100%;
   /* Same object-fit as the video so the overlay lines up with it exactly. */
   object-fit: contain;
-  transform: scaleX(-1); /* Mirror to match video */
   pointer-events: none;
+}
+
+.camera-canvas.mirrored {
+  transform: scaleX(-1); /* Mirror to match video */
 }
 
 /* Exactly the visible video rect (computed in JS from the letterbox insets) —
@@ -88,4 +94,3 @@
   box-shadow: 0 0 8px rgba(91, 156, 245, 0.4);
   animation: scanLine 3s ease-in-out infinite alternate;
 }
-

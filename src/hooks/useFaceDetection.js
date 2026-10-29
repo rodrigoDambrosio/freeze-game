@@ -8,16 +8,25 @@
  * eyelid or a jaw. The face mesh returns 478 points plus 52 blendshape
  * scores — the expression channel the vitality monitor is built on.
  *
- * Loaded on demand, because the model is 3.7 MB and the Freeze Challenge
- * does not need it.
+ * Respects the GPU / CPU delegate preference configured in #admin.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
 import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url';
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url';
-import { MEDIAPIPE_FACE_MODEL_URL, MIN_POSE_CONFIDENCE } from '../lib/constants.js';
+import {
+  MEDIAPIPE_FACE_MODEL_URL,
+  MIN_POSE_CONFIDENCE,
+  DEFAULT_INFERENCE_DELEGATE,
+} from '../lib/constants.js';
+import { setGpuPowerPreference, createInferenceCanvas } from '../lib/gpuConfig.js';
 
-export function useFaceDetection(videoRef, isVideoReady, enabled) {
+export function useFaceDetection(
+  videoRef,
+  isVideoReady,
+  enabled,
+  inferenceDelegate = DEFAULT_INFERENCE_DELEGATE,
+) {
   const landmarkerRef = useRef(null);
   const rafRef = useRef(null);
   const lastTimestampRef = useRef(0);
@@ -28,17 +37,37 @@ export function useFaceDetection(videoRef, isVideoReady, enabled) {
   const [isRunning, setIsRunning] = useState(false);
   const [loadError, setLoadError] = useState(null);
 
-  const loadModel = useCallback(async () => {
-    if (landmarkerRef.current) {
-      setIsModelReady(true);
-      return;
+  const stopDetection = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
     }
+    setIsRunning(false);
+  }, []);
+
+  const loadModel = useCallback(async () => {
+    stopDetection();
+    if (landmarkerRef.current) {
+      try {
+        landmarkerRef.current.close?.();
+      } catch {
+        // Ignore close error
+      }
+      landmarkerRef.current = null;
+    }
+    setIsModelReady(false);
     setIsLoading(true);
     setLoadError(null);
+
+    const wantsCpu = inferenceDelegate === 'CPU';
+    const powerPref = inferenceDelegate === 'GPU_LOW_POWER' ? 'low-power' : 'high-performance';
+    setGpuPowerPreference(powerPref);
+
     try {
       const vision = { wasmLoaderPath, wasmBinaryPath };
       const options = (delegate) => ({
         baseOptions: { modelAssetPath: MEDIAPIPE_FACE_MODEL_URL, delegate },
+        canvas: delegate === 'GPU' ? createInferenceCanvas(powerPref) : undefined,
         runningMode: 'VIDEO',
         numFaces: 1,
         // The blendshapes are the point of loading this model at all.
@@ -49,11 +78,15 @@ export function useFaceDetection(videoRef, isVideoReady, enabled) {
         minTrackingConfidence: MIN_POSE_CONFIDENCE,
       });
 
-      try {
-        landmarkerRef.current = await FaceLandmarker.createFromOptions(vision, options('GPU'));
-      } catch (gpuErr) {
-        console.warn('GPU delegate failed for FaceLandmarker, falling back to CPU:', gpuErr);
+      if (wantsCpu) {
         landmarkerRef.current = await FaceLandmarker.createFromOptions(vision, options('CPU'));
+      } else {
+        try {
+          landmarkerRef.current = await FaceLandmarker.createFromOptions(vision, options('GPU'));
+        } catch (gpuErr) {
+          console.warn('GPU delegate failed for FaceLandmarker, falling back to CPU:', gpuErr);
+          landmarkerRef.current = await FaceLandmarker.createFromOptions(vision, options('CPU'));
+        }
       }
 
       setIsModelReady(true);
@@ -63,7 +96,7 @@ export function useFaceDetection(videoRef, isVideoReady, enabled) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [inferenceDelegate, stopDetection]);
 
   const startDetection = useCallback(() => {
     if (!landmarkerRef.current || !videoRef.current || !isVideoReady) return;
@@ -77,7 +110,7 @@ export function useFaceDetection(videoRef, isVideoReady, enabled) {
       // MediaStream videos commonly keep currentTime at zero. Gate by wall
       // clock instead, otherwise inference silently stops after the first frame.
       const now = performance.now();
-      if (video.readyState >= 2 && now - lastTimestampRef.current >= 33) {
+      if (video.readyState >= 2 && video.videoWidth > 0 && now - lastTimestampRef.current >= 33) {
         lastTimestampRef.current = now;
         try {
           const result = landmarker.detectForVideo(video, now);
@@ -95,15 +128,7 @@ export function useFaceDetection(videoRef, isVideoReady, enabled) {
     rafRef.current = requestAnimationFrame(loop);
   }, [videoRef, isVideoReady]);
 
-  const stopDetection = useCallback(() => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    setIsRunning(false);
-  }, []);
-
-  // Load only once the monitor actually asks for it.
+  // Load (or reload when delegate changes) once the monitor asks for it.
   useEffect(() => {
     if (enabled) loadModel();
   }, [enabled, loadModel]);

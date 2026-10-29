@@ -25,3 +25,8 @@ export function formatSurvived(survivedSeconds) {
     ? survivedSeconds.toFixed(1)
     : Math.round(survivedSeconds).toString();
 }
+
+/** Neutral headline for a round the player ended themselves. */
+export function getAbandonedTitle() {
+  return '¡Hasta la próxima!';
+}

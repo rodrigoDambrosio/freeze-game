@@ -17,6 +17,11 @@
   background: radial-gradient(ellipse at 50% 65%, rgba(224, 92, 92, 0.12) 0%, rgba(10, 14, 26, 0.96) 65%);
 }
 
+/* Abandoning mid-round is not a failure — neutral blue, no shake. */
+.result-neutral {
+  background: radial-gradient(ellipse at 50% 65%, rgba(91, 156, 245, 0.12) 0%, rgba(10, 14, 26, 0.96) 65%);
+}
+
 /* ── Confetti particles ── */
 .particle {
   position: absolute;
@@ -60,6 +65,11 @@
   box-shadow: var(--shadow-glow-red);
 }
 
+.result-neutral .result-card {
+  border-color: rgba(91, 156, 245, 0.22);
+  box-shadow: var(--shadow-glow-blue);
+}
+
 /* ── Result mark (SVG icon circle) ── */
 .result-mark {
   width: 72px;
@@ -83,6 +93,12 @@
   color: var(--accent-red);
 }
 
+.result-mark-neutral {
+  background: rgba(91, 156, 245, 0.12);
+  border: 1.5px solid rgba(91, 156, 245, 0.4);
+  color: var(--signal);
+}
+
 /* ── Text ── */
 .result-title {
   font-size: 2rem;
@@ -97,6 +113,10 @@
 
 .result-lost .result-title {
   color: var(--accent-red);
+}
+
+.result-neutral .result-title {
+  color: var(--signal);
 }
 
 .result-subtitle {
@@ -144,4 +164,37 @@
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--accent-red);
+}
+
+/* ── Optional leaderboard save ───────────────────────────────────────────── */
+.result-leaderboard-save {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.result-name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 0.9rem;
+}
+
+.result-name-input:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 1px;
+}
+
+.result-saved-hint {
+  width: 100%;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--pulse);
 }

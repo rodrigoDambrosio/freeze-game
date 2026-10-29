@@ -25,8 +25,10 @@ import {
   REPLAY_BUFFER_MS,
   REPLAY_FRAME_CAPTURE_EVERY_N_FRAMES,
   REPLAY_SIGNAL_FOCUS,
+  ABANDONED_REASON,
 } from '../lib/constants.js';
 import { DEFAULT_SETTINGS } from '../lib/adminSync.js';
+import { playVictorySound, primeAudio } from '../lib/sound.js';
 
 export const GAME_STATE = {
   IDLE: 'IDLE',
@@ -54,6 +56,17 @@ export function useGameLogic() {
   // player away; turning one off makes the challenge easier for an audience.
   const [freezeSeconds, setFreezeSeconds] = useState(DEFAULT_FREEZE_SECONDS);
   const [sensitivity, setSensitivity] = useState(DEFAULT_SENSITIVITY);
+  const [customDynamicThreshold, setCustomDynamicThreshold] = useState(
+    SENSITIVITY_LEVELS[DEFAULT_SENSITIVITY].threshold
+  );
+  const [customAnchorThreshold, setCustomAnchorThreshold] = useState(
+    SENSITIVITY_LEVELS[DEFAULT_SENSITIVITY].anchorThreshold
+  );
+  const [customGestureThreshold, setCustomGestureThreshold] = useState(
+    SENSITIVITY_LEVELS[DEFAULT_SENSITIVITY].gestureThreshold
+  );
+  const [breachConfirmFrames, setBreachConfirmFrames] = useState(BREACH_CONFIRM_FRAMES);
+  const [poseLossGraceMs, setPoseLossGraceMs] = useState(POSE_LOSS_GRACE_MS);
   const [detectGestures, setDetectGestures] = useState(DEFAULT_SETTINGS.detectGestures);
   const [detectBlink, setDetectBlink] = useState(DEFAULT_SETTINGS.detectBlink);
   // Blinks tolerated before the player is given away. 0 = none.
@@ -76,10 +89,16 @@ export function useGameLogic() {
   const gameStateRef = useRef(GAME_STATE.IDLE);
   const timerIntervalRef = useRef(null);
   const analyzerRef = useRef(new MovementAnalyzer());
+  const previewAnalyzerRef = useRef(new MovementAnalyzer());
   const faceAnalyzerRef = useRef(new FaceGestureAnalyzer());
   const vitalityRef = useRef(new VitalityAnalyzer());
   const freezeSecondsRef = useRef(freezeSeconds);
   const sensitivityRef = useRef(sensitivity);
+  const dynamicThresholdRef = useRef(customDynamicThreshold);
+  const anchorThresholdRef = useRef(customAnchorThreshold);
+  const gestureThresholdRef = useRef(customGestureThreshold);
+  const breachConfirmFramesRef = useRef(breachConfirmFrames);
+  const poseLossGraceMsRef = useRef(poseLossGraceMs);
   const detectGesturesRef = useRef(detectGestures);
   const detectBlinkRef = useRef(detectBlink);
   const blinkBudgetRef = useRef(blinkBudget);
@@ -127,6 +146,26 @@ export function useGameLogic() {
   }, [sensitivity]);
 
   useEffect(() => {
+    dynamicThresholdRef.current = customDynamicThreshold;
+  }, [customDynamicThreshold]);
+
+  useEffect(() => {
+    anchorThresholdRef.current = customAnchorThreshold;
+  }, [customAnchorThreshold]);
+
+  useEffect(() => {
+    gestureThresholdRef.current = customGestureThreshold;
+  }, [customGestureThreshold]);
+
+  useEffect(() => {
+    breachConfirmFramesRef.current = breachConfirmFrames;
+  }, [breachConfirmFrames]);
+
+  useEffect(() => {
+    poseLossGraceMsRef.current = poseLossGraceMs;
+  }, [poseLossGraceMs]);
+
+  useEffect(() => {
     detectGesturesRef.current = detectGestures;
   }, [detectGestures]);
 
@@ -164,6 +203,7 @@ export function useGameLogic() {
       if (timeLeftRef.current <= 0) {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
+        playVictorySound();
         _setState(GAME_STATE.WON);
       }
     }, 1000);
@@ -216,6 +256,9 @@ export function useGameLogic() {
   /** Admin / Player presses "Empezar" */
   const startGame = useCallback(() => {
     if (gameStateRef.current !== GAME_STATE.READY) return;
+    // Unlocks the AudioContext inside this click's gesture, since the
+    // victory chime itself fires later from an async timer callback.
+    primeAudio();
     analyzerRef.current.reset();
     setInfractionReason(null);
     isAnchorSetRef.current = false;
@@ -279,11 +322,13 @@ export function useGameLogic() {
     latestBlendshapesRef.current = blendshapes;
     const state = gameStateRef.current;
 
-    // Face inference may run to keep the camera preview responsive, but the
-    // game detector is disarmed until the player presses "Empezar". In
-    // particular, do not let pre-round blinks or expressions contaminate the
-    // round baseline.
-    if (state !== GAME_STATE.PLAYING) return;
+    if (
+      state !== GAME_STATE.PLAYING &&
+      state !== GAME_STATE.DETECTING &&
+      state !== GAME_STATE.READY
+    ) {
+      return;
+    }
 
     const vitals = vitalityRef.current.update({
       blendshapes,
@@ -304,9 +349,11 @@ export function useGameLogic() {
     setGestureDrift(gesture.drift);
 
     // Blinks are always counted and shown; whether they cost the round is
-    // a separate decision.
+    // a separate decision (only enforced during PLAYING).
     const roundBlinks = Math.max(0, (vitals.totalBlinks ?? 0) - blinkBaseRef.current);
     blinkCountRef.current = roundBlinks;
+
+    if (state !== GAME_STATE.PLAYING) return;
 
     // The reason never quotes the tally: the detector can miss a blink, and a
     // number on the result screen reads as a count we are willing to defend.
@@ -323,7 +370,7 @@ export function useGameLogic() {
 
     if (!detectGesturesRef.current || !gesture.isValid) return;
 
-    const { gestureThreshold } = SENSITIVITY_LEVELS[sensitivityRef.current];
+    const gestureThreshold = gestureThresholdRef.current ?? SENSITIVITY_LEVELS[sensitivityRef.current].gestureThreshold;
     if (gesture.drift > gestureThreshold) {
       gestureFramesRef.current += 1;
       if (gestureFramesRef.current >= GESTURE_CONFIRM_FRAMES) {
@@ -339,8 +386,8 @@ export function useGameLogic() {
    *
    * Two debounces guard against detector flicker, which would otherwise end
    * a round while the player is perfectly still:
-   *  - a dropped pose only counts as leaving the frame after POSE_LOSS_GRACE_MS
-   *  - a movement breach must hold for BREACH_CONFIRM_FRAMES consecutive frames
+   *  - a dropped pose only counts as leaving the frame after poseLossGraceMs
+   *  - a movement breach must hold for breachConfirmFrames consecutive frames
    *
    * `grabFrame` returns a small canvas snapshot of the camera; it is only
    * called during a round, every few frames, to build the loss replay.
@@ -356,7 +403,7 @@ export function useGameLogic() {
       poseLostSinceRef.current = now;
     }
     const poseGapMs = poseLostSinceRef.current === null ? 0 : now - poseLostSinceRef.current;
-    const hasPose = poseGapMs < POSE_LOSS_GRACE_MS;
+    const hasPose = poseGapMs < poseLossGraceMsRef.current;
 
     if (state === GAME_STATE.PLAYING) {
       // Keep a rolling window of recent frames for the loss replay, trimmed
@@ -392,8 +439,9 @@ export function useGameLogic() {
       const { score, anchorDrift, isValid, reason, anchorReason } = result;
 
       const currentConfig = SENSITIVITY_LEVELS[sensitivityRef.current];
-      const dynamicThreshold = currentConfig.threshold;
-      const anchorThreshold = currentConfig.anchorThreshold;
+      const dynamicThreshold = dynamicThresholdRef.current ?? currentConfig.threshold;
+      const anchorThreshold = anchorThresholdRef.current ?? currentConfig.anchorThreshold;
+      const confirmFrames = breachConfirmFramesRef.current;
 
       // Composite HUD meter value: reflects both velocity and static posture drift
       const normalizedDrift = (anchorDrift / anchorThreshold) * dynamicThreshold;
@@ -412,6 +460,7 @@ export function useGameLogic() {
         bodyScale: result.bodyScale,
         frameCount: result.frameCount,
         breachFrames: breachFramesRef.current,
+        confirmFrames,
         dynamicThreshold,
         anchorThreshold,
       });
@@ -423,7 +472,7 @@ export function useGameLogic() {
         if (hasDynamicBreach || hasAnchorBreach) {
           breachFramesRef.current += 1;
 
-          if (breachFramesRef.current >= BREACH_CONFIRM_FRAMES) {
+          if (breachFramesRef.current >= confirmFrames) {
             const breachReason = hasDynamicBreach ? reason : anchorReason;
             const breachZone = hasDynamicBreach ? result.activeZone : peakZone(result.driftScores);
             _detected(breachReason || 'Movimiento detectado', 'movement', breachZone);
@@ -433,17 +482,44 @@ export function useGameLogic() {
         }
       }
     } else if (state === GAME_STATE.DETECTING || state === GAME_STATE.READY) {
-      // Before "Empezar", only verify that a person is present. Do not feed
-      // the movement analyzer: its history and calibration belong to a round.
+      // Before "Empezar", verify that a person is present and run the
+      // separate preview analyzer so passers-by see live movement telemetry
+      // without contaminating the round analyzer (`analyzerRef`).
       if (state === GAME_STATE.DETECTING && landmarks) {
         _setState(GAME_STATE.READY);
       } else if (state === GAME_STATE.READY && !hasPose) {
         _setState(GAME_STATE.DETECTING);
         analyzerRef.current.reset();
+        previewAnalyzerRef.current.reset();
+        faceAnalyzerRef.current.reset();
+        isFaceAnchorSetRef.current = false;
       }
-      setMovementScore(0);
+      if (landmarks) {
+        const previewResult = previewAnalyzerRef.current.update(landmarks);
+        setMovementScore(previewResult.score);
+      } else {
+        setMovementScore(0);
+      }
     }
   }, [_setState, _stopTimer, _detected]);
+
+  /**
+   * Player gives up mid-round (the "Salir" button). Closes the round with
+   * whatever time was survived so far — not a detection, so it skips the
+   * replay and gets neutral copy on the result screen.
+   */
+  const quitGame = useCallback(() => {
+    if (gameStateRef.current !== GAME_STATE.PLAYING) return;
+    const survivedMs = playStartedAtRef.current ? performance.now() - playStartedAtRef.current : 0;
+    detectedSignalRef.current = null;
+    _stopTimer();
+    setInfractionReason(ABANDONED_REASON);
+    setReplayData({ frames: [], anchorLandmarks: null, activeZone: null, focusIndices: null, survivedMs });
+    replayBufferRef.current = [];
+    _setState(GAME_STATE.LOST);
+    analyzerRef.current.reset();
+    faceAnalyzerRef.current.reset();
+  }, [_setState, _stopTimer]);
 
   /** Reset for another attempt */
   const reset = useCallback(() => {
@@ -517,6 +593,16 @@ export function useGameLogic() {
     setFreezeSeconds,
     sensitivity,
     setSensitivity,
+    customDynamicThreshold,
+    setCustomDynamicThreshold,
+    customAnchorThreshold,
+    setCustomAnchorThreshold,
+    customGestureThreshold,
+    setCustomGestureThreshold,
+    breachConfirmFrames,
+    setBreachConfirmFrames,
+    poseLossGraceMs,
+    setPoseLossGraceMs,
     // Actions
     onCameraActivated,
     onCameraDeactivated,
@@ -525,5 +611,6 @@ export function useGameLogic() {
     onFaceFrame,
     reset,
     backToIdle,
+    quitGame,
   };
 }

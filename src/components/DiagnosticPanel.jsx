@@ -55,7 +55,7 @@ export default function DiagnosticPanel({ diagnostics, sensitivity }) {
 
   const {
     zoneScores, driftScores, validCounts, excludedLandmarks, bodyScale,
-    frameCount, breachFrames, dynamicThreshold, anchorThreshold, isValid,
+    frameCount, breachFrames, confirmFrames, dynamicThreshold, anchorThreshold, isValid,
     score, anchorDrift,
   } = diagnostics;
 
@@ -73,7 +73,7 @@ export default function DiagnosticPanel({ diagnostics, sensitivity }) {
           {isValid ? 'midiendo' : 'calibrando'}
         </span>
         <span className={breachFrames > 0 ? 'diag-num-over' : ''}>
-          infracción {breachFrames}/4
+          infracción {breachFrames}/{confirmFrames ?? 4}
         </span>
       </div>
 

@@ -1,0 +1,74 @@
+/* Qualified with `.game-stage` so this beats `.game-stage > *` (App.css) at
+   equal specificity regardless of CSS import order — otherwise this
+   full-screen wrapper ends up clickable and swallows every tap meant for the
+   HUD underneath it (the "Empezar" button included). */
+.game-stage .ias-wrap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.ias-leaderboard {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  width: 220px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  pointer-events: auto;
+}
+
+.ias-leaderboard-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin-bottom: 8px;
+}
+
+.ias-leaderboard-empty {
+  font-size: 0.8rem;
+  color: var(--slate);
+}
+
+.ias-leaderboard-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ias-leaderboard-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.ias-rank {
+  width: 16px;
+  font-weight: 700;
+  color: var(--signal);
+}
+
+.ias-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--bone);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ias-value {
+  color: var(--slate);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .ias-leaderboard { width: 170px; padding: 10px 12px; }
+}

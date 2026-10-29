@@ -1,5 +1,7 @@
-// First import: installs the network guard before MediaPipe can load.
+// First imports: install the network guard and WebGL GPU powerPreference hook
+// before MediaPipe can load.
 import './lib/offlineGuard.js'
+import './lib/gpuConfig.js'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

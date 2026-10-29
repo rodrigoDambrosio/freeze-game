@@ -1,0 +1,111 @@
+/* Always sits on video, so colours are pinned here rather than taken from
+   theme tokens, which invert in light mode (see VitalityMonitor.css). */
+.scp-panel {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 260px;
+  padding: 14px 30px 18px;
+  border-radius: var(--radius-lg);
+  background: rgba(8, 11, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #f2efea;
+  text-align: center;
+}
+
+.scp-progress {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b4bdcd;
+}
+
+.scp-panel-holding {
+  border-color: rgba(61, 214, 140, 0.45);
+}
+
+.scp-command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.scp-hint {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8b95a8;
+}
+
+.scp-hint-holding {
+  color: #4ade9b;
+}
+
+.scp-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.scp-label {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #f2efea;
+}
+
+.scp-score {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.scp-score-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #6ea8f7;
+  font-variant-numeric: tabular-nums;
+}
+
+.scp-score-unit {
+  font-size: 0.72rem;
+  color: #b4bdcd;
+}
+
+.scp-flash {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.scp-flash-success {
+  background: rgba(61, 214, 140, 0.18);
+  color: #4ade9b;
+}
+
+.scp-flash-timeout {
+  background: rgba(224, 92, 92, 0.18);
+  color: #f07878;
+}
+
+@media (max-width: 640px) {
+  .scp-panel { min-width: 200px; padding: 10px 18px 16px; }
+  .scp-label { font-size: 1.2rem; }
+  .scp-icon { font-size: 1.6rem; }
+}

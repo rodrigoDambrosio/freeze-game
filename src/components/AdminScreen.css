@@ -26,7 +26,7 @@
 }
 
 .admin-screen {
-  width: min(480px, 100%);
+  width: min(540px, 100%);
   border-radius: var(--radius-xl);
   padding: 0;
   overflow: hidden;
@@ -79,6 +79,12 @@
   letter-spacing: 0.02em;
 }
 
+.admin-sublabel {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .admin-value-badge {
   background: var(--signal);
   color: var(--ink);
@@ -86,6 +92,145 @@
   border-radius: var(--radius-sm);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+/* ── Video Source Sub-box & Inputs ── */
+.admin-source-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-subbox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-subtle);
+}
+
+.admin-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.admin-mini-btn {
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  border-radius: var(--radius-sm);
+}
+
+.admin-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-text-input,
+.admin-select {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+
+.admin-text-input:focus,
+.admin-select:focus {
+  border-color: var(--signal);
+}
+
+.admin-select option {
+  background: #141821;
+  color: #e8e4df;
+}
+
+.admin-apply-btn {
+  padding: 9px 16px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.admin-file-input {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  font-family: var(--font);
+}
+
+.admin-file-input::file-selector-button {
+  padding: 7px 12px;
+  margin-right: 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: rgba(91, 156, 245, 0.12);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-toggles-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-status-box {
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(91, 156, 245, 0.08);
+  border: 1px solid rgba(91, 156, 245, 0.22);
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.admin-error-text {
+  color: var(--accent-red);
+  font-weight: 500;
+}
+
+/* ── Collapsible Advanced Section ── */
+.admin-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.admin-collapse-btn:hover {
+  background: rgba(91, 156, 245, 0.08);
+  border-color: rgba(91, 156, 245, 0.28);
+}
+
+.admin-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-subtle);
 }
 
 /* ── Slider ── */
@@ -99,7 +244,7 @@
   font-size: 0.7rem;
   color: var(--text-muted);
   white-space: nowrap;
-  min-width: 24px;
+  min-width: 28px;
 }
 
 .admin-slider {
@@ -134,6 +279,13 @@
   line-height: 1.4;
 }
 .admin-hint strong {
+  color: var(--text-secondary);
+}
+.admin-hint code {
+  font-size: 0.72rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.07);
   color: var(--text-secondary);
 }
 
@@ -186,6 +338,14 @@
   font-weight: 400;
 }
 
+.admin-clear-leaderboard-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 8px 14px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Footer ── */
 .admin-footer {
   padding: 16px 28px 24px;
@@ -215,7 +375,7 @@
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 0;
+  padding: 8px 0;
   cursor: pointer;
 }
 

@@ -1,0 +1,43 @@
+.quit-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 14, 26, 0.55);
+  color: var(--bone);
+  font-family: var(--font);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.quit-btn:hover {
+  background: rgba(224, 92, 92, 0.18);
+  border-color: rgba(224, 92, 92, 0.4);
+}
+
+.quit-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 14, 26, 0.72);
+  border: 1px solid rgba(224, 92, 92, 0.35);
+}
+
+.quit-confirm-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--bone);
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.quit-confirm-btn {
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+}

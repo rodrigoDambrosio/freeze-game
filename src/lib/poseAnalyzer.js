@@ -1,7 +1,8 @@
 /**
  * poseAnalyzer.js
  *
- * Multi-zone movement detection using MediaPipe Pose landmarks.
+ * Multi-zone movement detection and occlusion-resilient skeleton smoothing
+ * using MediaPipe Pose landmarks.
  * Analyzes motion across distinct anatomical zones:
  *  - Head (nose, eyes, ears)
  *  - Torso & Centroid (shoulders, hips, center of mass)
@@ -19,11 +20,14 @@ import {
   TORSO_LANDMARK_INDICES,
   ARMS_LANDMARK_INDICES,
   LEGS_LANDMARK_INDICES,
+  DISTAL_EXTREMITY_INDICES,
   ZONE_WEIGHTS,
   MIN_LANDMARK_VISIBILITY,
   MOVEMENT_WINDOW_FRAMES,
-  LANDMARK_SMOOTHING_MIN_ALPHA,
-  LANDMARK_SMOOTHING_GAIN,
+  DEFAULT_POSE_SMOOTHING,
+  DEFAULT_OCCLUSION_DAMPING,
+  DEFAULT_OCCLUSION_HOLD_MS,
+  DEFAULT_HIDE_NOISY_EXTREMITIES,
   LANDMARK_NOISE_FLOOR,
   VISIBILITY_DECAY_ALPHA,
   SCORE_MEDIAN_WINDOW,
@@ -40,14 +44,85 @@ import {
   MAX_BODY_SCALE,
 } from './constants.js';
 
+const DISTAL_SET = new Set(DISTAL_EXTREMITY_INDICES);
+const LOWER_BODY_SET = new Set(LEGS_LANDMARK_INDICES);
+
+// Live runtime configuration synced from AdminScreen (#admin)
+const runtimeConfig = {
+  minLandmarkVisibility: MIN_LANDMARK_VISIBILITY,
+  poseSmoothing: DEFAULT_POSE_SMOOTHING,
+  occlusionDamping: DEFAULT_OCCLUSION_DAMPING,
+  occlusionHoldMs: DEFAULT_OCCLUSION_HOLD_MS,
+  hideNoisyExtremities: DEFAULT_HIDE_NOISY_EXTREMITIES,
+  zoneWeights: { ...ZONE_WEIGHTS },
+};
+
+/**
+ * Update runtime pose & analyzer parameters from Admin settings without touching code.
+ */
+export function setPoseRuntimeConfig(patch = {}) {
+  if (Number.isFinite(patch.minLandmarkVisibility)) {
+    runtimeConfig.minLandmarkVisibility = patch.minLandmarkVisibility;
+  }
+  if (Number.isFinite(patch.poseSmoothing)) {
+    runtimeConfig.poseSmoothing = patch.poseSmoothing;
+  }
+  if (typeof patch.occlusionDamping === 'boolean') {
+    runtimeConfig.occlusionDamping = patch.occlusionDamping;
+  }
+  if (Number.isFinite(patch.occlusionHoldMs)) {
+    runtimeConfig.occlusionHoldMs = patch.occlusionHoldMs;
+  }
+  if (typeof patch.hideNoisyExtremities === 'boolean') {
+    runtimeConfig.hideNoisyExtremities = patch.hideNoisyExtremities;
+  }
+  if (patch.zoneWeights && typeof patch.zoneWeights === 'object') {
+    runtimeConfig.zoneWeights = {
+      ...runtimeConfig.zoneWeights,
+      ...patch.zoneWeights,
+    };
+  }
+}
+
+export function getPoseRuntimeConfig() {
+  return runtimeConfig;
+}
+
+function clamp(val, min, max) {
+  return Math.min(max, Math.max(min, val));
+}
+
 /**
  * Calculate Euclidean displacement between two landmark points.
  */
-function pointDistance(a, b) {
+export function pointDistance(a, b) {
   if (!a || !b) return 0;
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Whether a landmark lies inside the valid camera frame (with small margin).
+ */
+export function isLandmarkInFrame(lm) {
+  if (!lm) return false;
+  const lo = -FRAME_BOUNDS_MARGIN;
+  const hi = 1 + FRAME_BOUNDS_MARGIN;
+  return lm.x >= lo && lm.x <= hi && lm.y >= lo && lm.y <= hi;
+}
+
+/**
+ * Minimum visibility required for a specific landmark index given current config.
+ * Lower-body joints get a slightly stricter gate when `hideNoisyExtremities` is
+ * enabled so knees/ankles behind a desk or podium are not hallucinated.
+ */
+function requiredVisibilityForIndex(idx, minVis = runtimeConfig.minLandmarkVisibility) {
+  if (runtimeConfig.hideNoisyExtremities && idx != null) {
+    if (DISTAL_SET.has(idx)) return 0.98;
+    if (LOWER_BODY_SET.has(idx)) return Math.min(0.92, minVis + 0.08);
+  }
+  return minVis;
 }
 
 /**
@@ -58,12 +133,11 @@ function pointDistance(a, b) {
  * reports hips and knees it has never seen — guesses that jump around
  * between frames and read as movement from a player who has not moved.
  */
-export function isLandmarkUsable(lm) {
+export function isLandmarkUsable(lm, idx = null, minVis = runtimeConfig.minLandmarkVisibility) {
   if (!lm) return false;
-  if ((lm.visibility ?? 1) < MIN_LANDMARK_VISIBILITY) return false;
-  const lo = -FRAME_BOUNDS_MARGIN;
-  const hi = 1 + FRAME_BOUNDS_MARGIN;
-  return lm.x >= lo && lm.x <= hi && lm.y >= lo && lm.y <= hi;
+  const reqVis = requiredVisibilityForIndex(idx, minVis);
+  if ((lm.visibility ?? 1) < reqVis) return false;
+  return isLandmarkInFrame(lm);
 }
 
 /**
@@ -82,7 +156,7 @@ export function calculateBodyScale(landmarks) {
 
   const ls = landmarks[11];
   const rs = landmarks[12];
-  if (isLandmarkUsable(ls) && isLandmarkUsable(rs)) {
+  if (isLandmarkUsable(ls, 11) && isLandmarkUsable(rs, 12)) {
     const dist = pointDistance(ls, rs);
     if (dist >= 0.05) scale = dist / REFERENCE_SHOULDER_WIDTH;
   }
@@ -90,7 +164,7 @@ export function calculateBodyScale(landmarks) {
   if (scale === null) {
     const le = landmarks[7];
     const re = landmarks[8];
-    if (isLandmarkUsable(le) && isLandmarkUsable(re)) {
+    if (isLandmarkUsable(le, 7) && isLandmarkUsable(re, 8)) {
       const dist = pointDistance(le, re);
       if (dist >= 0.02) scale = dist / REFERENCE_HEAD_WIDTH;
     }
@@ -116,7 +190,7 @@ export function calculateZoneDisplacement(current, previous, indices, scale = 1.
     const prev = previous[idx];
     if (!curr || !prev) continue;
 
-    if (!isLandmarkUsable(curr) || !isLandmarkUsable(prev)) continue;
+    if (!isLandmarkUsable(curr, idx) || !isLandmarkUsable(prev, idx)) continue;
 
     distances.push(Math.max(0, pointDistance(curr, prev) / scale - LANDMARK_NOISE_FLOOR));
   }
@@ -143,7 +217,7 @@ export function calculateCentroid(landmarks, indices) {
 
   for (const idx of indices) {
     const lm = landmarks[idx];
-    if (!isLandmarkUsable(lm)) continue;
+    if (!isLandmarkUsable(lm, idx)) continue;
     sumX += lm.x;
     sumY += lm.y;
     count++;
@@ -176,7 +250,7 @@ export function calculateGroupTranslation(current, previous, indices, scale = 1.
     const curr = current[idx];
     const prev = previous[idx];
     if (!curr || !prev) continue;
-    if (!isLandmarkUsable(curr) || !isLandmarkUsable(prev)) continue;
+    if (!isLandmarkUsable(curr, idx) || !isLandmarkUsable(prev, idx)) continue;
 
     sumDx += curr.x - prev.x;
     sumDy += curr.y - prev.y;
@@ -199,11 +273,12 @@ function hasZoneCoverage(validCount, indices) {
  * Multi-zone movement analysis between two frames.
  * Returns the peak weighted movement score and the identifying infraction zone.
  */
-export function analyzeMovement(current, previous, excluded = null) {
+export function analyzeMovement(current, previous, excluded = null, customWeights = null) {
   if (!current || !previous || current.length === 0 || previous.length === 0) {
     return { score: 0, activeZone: null, zoneScores: {} };
   }
 
+  const weights = customWeights || runtimeConfig.zoneWeights || ZONE_WEIGHTS;
   const scale = calculateBodyScale(current);
 
   // A zone out of frame scores 0 rather than contributing the noise of
@@ -212,26 +287,27 @@ export function analyzeMovement(current, previous, excluded = null) {
   // 1. Head movement
   const headData = calculateZoneDisplacement(current, previous, HEAD_LANDMARK_INDICES, scale, excluded);
   const headScore = hasZoneCoverage(headData.validCount, HEAD_LANDMARK_INDICES)
-    ? headData.displacement * ZONE_WEIGHTS.head
+    ? headData.displacement * (weights.head ?? ZONE_WEIGHTS.head)
     : 0;
 
   // 2. Torso landmark displacement & Torso Centroid translation
   const torsoData = calculateZoneDisplacement(current, previous, TORSO_LANDMARK_INDICES, scale, excluded);
   const centroidDist = calculateGroupTranslation(current, previous, TORSO_LANDMARK_INDICES, scale, excluded);
+  const torsoWeight = weights.torso ?? ZONE_WEIGHTS.torso;
   const torsoScore = hasZoneCoverage(torsoData.validCount, TORSO_LANDMARK_INDICES)
-    ? Math.max(torsoData.displacement, centroidDist) * ZONE_WEIGHTS.torso
+    ? Math.max(torsoData.displacement, centroidDist) * torsoWeight
     : 0;
 
   // 3. Arms movement
   const armsData = calculateZoneDisplacement(current, previous, ARMS_LANDMARK_INDICES, scale, excluded);
   const armsScore = hasZoneCoverage(armsData.validCount, ARMS_LANDMARK_INDICES)
-    ? armsData.displacement * ZONE_WEIGHTS.arms
+    ? armsData.displacement * (weights.arms ?? ZONE_WEIGHTS.arms)
     : 0;
 
   // 4. Legs movement
   const legsData = calculateZoneDisplacement(current, previous, LEGS_LANDMARK_INDICES, scale, excluded);
   const legsScore = hasZoneCoverage(legsData.validCount, LEGS_LANDMARK_INDICES)
-    ? legsData.displacement * ZONE_WEIGHTS.legs
+    ? legsData.displacement * (weights.legs ?? ZONE_WEIGHTS.legs)
     : 0;
 
   // Find peak movement zone
@@ -252,7 +328,7 @@ export function analyzeMovement(current, previous, excluded = null) {
     zoneScores: {
       head: headScore,
       torso: torsoScore,
-      centroid: centroidDist * ZONE_WEIGHTS.torso,
+      centroid: centroidDist * torsoWeight,
       arms: armsScore,
       legs: legsScore,
     },
@@ -263,27 +339,28 @@ export function analyzeMovement(current, previous, excluded = null) {
  * Calculate static drift from the anchor (initial freeze pose).
  * Detects slow drift/creeping movements that frame-by-frame diffs might miss.
  */
-export function calculateAnchorDrift(current, anchor, excluded = null) {
+export function calculateAnchorDrift(current, anchor, excluded = null, customWeights = null) {
   if (!current || !anchor) return { drift: 0, reason: null };
 
+  const weights = customWeights || runtimeConfig.zoneWeights || ZONE_WEIGHTS;
   const scale = calculateBodyScale(current);
 
   // Head drift from start
   const headData = calculateZoneDisplacement(current, anchor, HEAD_LANDMARK_INDICES, scale, excluded);
   const headDrift = hasZoneCoverage(headData.validCount, HEAD_LANDMARK_INDICES)
-    ? headData.displacement * ZONE_WEIGHTS.head
+    ? headData.displacement * (weights.head ?? ZONE_WEIGHTS.head)
     : 0;
 
   // Body/Torso centroid drift from start
   const torsoData = calculateZoneDisplacement(current, anchor, TORSO_LANDMARK_INDICES, scale, excluded);
   const centroidDrift = hasZoneCoverage(torsoData.validCount, TORSO_LANDMARK_INDICES)
-    ? calculateGroupTranslation(current, anchor, TORSO_LANDMARK_INDICES, scale, excluded) * ZONE_WEIGHTS.torso
+    ? calculateGroupTranslation(current, anchor, TORSO_LANDMARK_INDICES, scale, excluded) * (weights.torso ?? ZONE_WEIGHTS.torso)
     : 0;
 
   // Arms drift from start
   const armsData = calculateZoneDisplacement(current, anchor, ARMS_LANDMARK_INDICES, scale, excluded);
   const armsDrift = hasZoneCoverage(armsData.validCount, ARMS_LANDMARK_INDICES)
-    ? armsData.displacement * ZONE_WEIGHTS.arms
+    ? armsData.displacement * (weights.arms ?? ZONE_WEIGHTS.arms)
     : 0;
 
   const drifts = [
@@ -318,51 +395,222 @@ function median(values) {
 }
 
 /**
- * Adaptive exponential smoothing of a landmark set.
+ * Adaptive exponential smoothing of a landmark set with occlusion protection.
  *
- * Small frame-to-frame displacements (detector jitter) are damped heavily,
- * while large ones (real movement) pass through nearly unfiltered, so the
- * filter removes noise without hiding actual motion.
- *
- * A landmark that momentarily drops below the visibility gate keeps its last
- * known position and lets its visibility decay, so the set of landmarks used
- * for averaging stays stable instead of flickering in and out.
+ * Key improvements for expo stability under partial occlusion:
+ *  1. When a landmark drops below `minLandmarkVisibility` or goes out of frame,
+ *     its position is FROZEN at the last known reliable coordinate instead of
+ *     being dragged toward MediaPipe's hallucinated position.
+ *  2. Confidence-weighted EMA: semi-occluded keypoints (visibility near the
+ *     threshold) update with much lower alpha than high-confidence keypoints.
+ *  3. Occlusion spike clamping: sudden single-frame jumps on moderate-confidence
+ *     landmarks are clamped so occluded limbs do not snap across the screen.
  */
-export function smoothLandmarks(raw, previous) {
+export function smoothLandmarks(raw, previous, options = {}) {
   if (!raw) return null;
   if (!previous) return raw.map((lm) => (lm ? { ...lm } : lm));
+
+  const smoothness = clamp(options.poseSmoothing ?? runtimeConfig.poseSmoothing, 0, 0.95);
+  const occlusionDamping = options.occlusionDamping ?? runtimeConfig.occlusionDamping;
+  const minVisBase = options.minLandmarkVisibility ?? runtimeConfig.minLandmarkVisibility;
+
+  // Map smoothness (0..0.95) to adaptive EMA parameters
+  const minAlpha = smoothness <= 0 ? 1 : Math.max(0.03, (1 - smoothness) * 0.45);
+  const gain = smoothness <= 0 ? 100 : Math.max(1.2, (1 - smoothness) * 28);
+  const maxAlpha = smoothness <= 0 ? 1 : Math.max(minAlpha + 0.05, 1 - smoothness * 0.42);
 
   return raw.map((lm, i) => {
     const prev = previous[i];
     if (!lm) return prev ?? lm;
     if (!prev) return { ...lm };
 
-    const rawVisibility = lm.visibility ?? 1;
+    const minVis = requiredVisibilityForIndex(i, minVisBase);
+    const inFrame = isLandmarkInFrame(lm);
+    const rawVisibility = inFrame ? (lm.visibility ?? 1) : 0;
 
-    // Low confidence: the reported position is unreliable, so track it only
-    // weakly and let the confidence decay. Keeping the point moving (instead
-    // of freezing it) means it does not snap back when confidence returns,
-    // and the decay gives the visibility gate hysteresis so a one- or
-    // two-frame dropout does not change which landmarks are averaged.
-    if (rawVisibility < MIN_LANDMARK_VISIBILITY) {
+    // Low confidence / occluded: hold the last known reliable position and
+    // decay visibility. Never pull `prev` toward an occluded/invented point!
+    if (rawVisibility < minVis) {
+      if (occlusionDamping) {
+        return {
+          ...prev,
+          x: prev.x,
+          y: prev.y,
+          visibility: prev.visibility + (rawVisibility - prev.visibility) * VISIBILITY_DECAY_ALPHA,
+        };
+      }
       return {
         ...prev,
-        x: prev.x + (lm.x - prev.x) * VISIBILITY_DECAY_ALPHA,
-        y: prev.y + (lm.y - prev.y) * VISIBILITY_DECAY_ALPHA,
+        x: prev.x + (lm.x - prev.x) * (VISIBILITY_DECAY_ALPHA * 0.25),
+        y: prev.y + (lm.y - prev.y) * (VISIBILITY_DECAY_ALPHA * 0.25),
         visibility: prev.visibility + (rawVisibility - prev.visibility) * VISIBILITY_DECAY_ALPHA,
       };
     }
 
+    let targetX = lm.x;
+    let targetY = lm.y;
     const delta = pointDistance(prev, lm);
-    const alpha = Math.min(1, LANDMARK_SMOOTHING_MIN_ALPHA + delta * LANDMARK_SMOOTHING_GAIN);
+
+    // Confidence weight: 0.20 right at the visibility threshold, 1.0 when >= 0.85
+    const confSpan = Math.max(0.1, 0.85 - minVis);
+    const confWeight = occlusionDamping
+      ? clamp((rawVisibility - minVis) / confSpan, 0.20, 1.0)
+      : 1.0;
+
+    // Clamp sudden large jumps when confidence is not rock-solid
+    if (occlusionDamping && rawVisibility < 0.82) {
+      const maxStep = 0.045 + 0.09 * confWeight;
+      if (delta > maxStep) {
+        const ratio = maxStep / delta;
+        targetX = prev.x + (lm.x - prev.x) * ratio;
+        targetY = prev.y + (lm.y - prev.y) * ratio;
+      }
+    }
+
+    const effectiveDelta = Math.hypot(targetX - prev.x, targetY - prev.y);
+    const baseAlpha = Math.min(maxAlpha, minAlpha + effectiveDelta * gain);
+    const alpha = clamp(baseAlpha * confWeight, minAlpha * 0.5, maxAlpha);
 
     return {
       ...lm,
-      x: prev.x + (lm.x - prev.x) * alpha,
-      y: prev.y + (lm.y - prev.y) * alpha,
-      visibility: rawVisibility,
+      x: prev.x + (targetX - prev.x) * alpha,
+      y: prev.y + (targetY - prev.y) * alpha,
+      visibility: prev.visibility + (rawVisibility - prev.visibility) * Math.max(0.35, alpha),
     };
   });
+}
+
+/**
+ * Stateful PoseSmoother for the live skeleton & pose stream.
+ *
+ * Adds temporal hysteresis (`occlusionHoldMs`) and multi-frame spike rejection
+ * on top of `smoothLandmarks`, so that when a limb is briefly occluded at the
+ * expo (crossed arms, podium, passer-by):
+ *  - Its keypoints hold steady at their last good position during `occlusionHoldMs`
+ *    instead of flying off-screen or flickering on and off.
+ *  - Single-frame hallucination teleports are rejected unless the new position
+ *    is confirmed across consecutive frames.
+ */
+export class PoseSmoother {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this._smoothed = null;
+    this._lastGoodAt = new Array(33).fill(0);
+    this._spikeCounts = new Array(33).fill(0);
+  }
+
+  update(rawLandmarks, now = performance.now()) {
+    if (!rawLandmarks || rawLandmarks.length === 0) {
+      this._smoothed = null;
+      return null;
+    }
+
+    const smoothness = clamp(runtimeConfig.poseSmoothing, 0, 0.95);
+    const occlusionDamping = runtimeConfig.occlusionDamping;
+    const holdMs = runtimeConfig.occlusionHoldMs;
+    const minVisBase = runtimeConfig.minLandmarkVisibility;
+
+    if (!this._smoothed) {
+      this._smoothed = rawLandmarks.map((lm, i) => {
+        if (!lm) return null;
+        const vis = isLandmarkInFrame(lm) ? (lm.visibility ?? 1) : 0;
+        if (vis >= requiredVisibilityForIndex(i, minVisBase)) {
+          this._lastGoodAt[i] = now;
+        }
+        return { ...lm, visibility: vis };
+      });
+      return this._smoothed;
+    }
+
+    const minAlpha = smoothness <= 0 ? 1 : Math.max(0.03, (1 - smoothness) * 0.42);
+    const gain = smoothness <= 0 ? 100 : Math.max(1.2, (1 - smoothness) * 26);
+    const maxAlpha = smoothness <= 0 ? 1 : Math.max(minAlpha + 0.05, 1 - smoothness * 0.40);
+
+    const next = rawLandmarks.map((lm, i) => {
+      const prev = this._smoothed[i];
+      if (!lm) return prev ?? null;
+      if (!prev) {
+        this._lastGoodAt[i] = now;
+        return { ...lm };
+      }
+
+      const minVis = requiredVisibilityForIndex(i, minVisBase);
+      const inFrame = isLandmarkInFrame(lm);
+      const rawVis = inFrame ? (lm.visibility ?? 1) : 0;
+
+      // 1. Landmark is below visibility gate (occluded or out of frame)
+      if (rawVis < minVis) {
+        this._spikeCounts[i] = 0;
+        const elapsedSinceGood = now - (this._lastGoodAt[i] || 0);
+
+        if (occlusionDamping && elapsedSinceGood <= holdMs && prev.visibility >= minVis) {
+          // Hold last reliable position and keep visibility gently tapering
+          // just above minVis during the hold window so brief occlusions don't blink.
+          const holdProgress = holdMs > 0 ? clamp(elapsedSinceGood / holdMs, 0, 1) : 1;
+          const heldVis = minVis + (prev.visibility - minVis) * (1 - holdProgress * 0.65);
+          return {
+            ...prev,
+            x: prev.x,
+            y: prev.y,
+            visibility: heldVis,
+          };
+        }
+
+        // Past the hold window: freeze coordinates and decay visibility below minVis
+        return {
+          ...prev,
+          x: prev.x,
+          y: prev.y,
+          visibility: prev.visibility + (rawVis - prev.visibility) * VISIBILITY_DECAY_ALPHA,
+        };
+      }
+
+      // 2. Landmark is above visibility gate
+      this._lastGoodAt[i] = now;
+      const delta = pointDistance(prev, lm);
+      const confSpan = Math.max(0.1, 0.85 - minVis);
+      const confWeight = occlusionDamping
+        ? clamp((rawVis - minVis) / confSpan, 0.18, 1.0)
+        : 1.0;
+
+      let targetX = lm.x;
+      let targetY = lm.y;
+
+      // Multi-frame outlier / teleport rejection
+      if (occlusionDamping) {
+        const spikeThreshold = 0.055 + 0.085 * confWeight;
+        if (delta > spikeThreshold) {
+          this._spikeCounts[i] = (this._spikeCounts[i] || 0) + 1;
+          // Damp the first 2 frames of a sudden jump heavily; if it persists
+          // for 3+ frames, let it catch up progressively.
+          const spikeAllow = this._spikeCounts[i] <= 2 ? 0.22 * confWeight : 0.65;
+          const maxStep = spikeThreshold * spikeAllow;
+          const ratio = Math.min(1, maxStep / delta);
+          targetX = prev.x + (lm.x - prev.x) * ratio;
+          targetY = prev.y + (lm.y - prev.y) * ratio;
+        } else {
+          this._spikeCounts[i] = 0;
+        }
+      }
+
+      const effectiveDelta = Math.hypot(targetX - prev.x, targetY - prev.y);
+      const baseAlpha = Math.min(maxAlpha, minAlpha + effectiveDelta * gain);
+      const alpha = clamp(baseAlpha * confWeight, minAlpha * 0.4, maxAlpha);
+
+      return {
+        ...lm,
+        x: prev.x + (targetX - prev.x) * alpha,
+        y: prev.y + (targetY - prev.y) * alpha,
+        visibility: prev.visibility + (rawVis - prev.visibility) * Math.max(0.3, alpha),
+      };
+    });
+
+    this._smoothed = next;
+    return next;
+  }
 }
 
 /**
@@ -484,7 +732,7 @@ export class MovementAnalyzer {
         const curr = smoothed[idx];
         const prev = prevSmoothed[idx];
         if (!curr || !prev) continue;
-        if (!isLandmarkUsable(curr) || !isLandmarkUsable(prev)) continue;
+        if (!isLandmarkUsable(curr, idx) || !isLandmarkUsable(prev, idx)) continue;
 
         if (!this._stabilityAcc.has(idx)) this._stabilityAcc.set(idx, []);
         this._stabilityAcc.get(idx).push(pointDistance(curr, prev) / calScale);
@@ -589,7 +837,7 @@ export function calculateMovementScore(current, previous) {
 export function getLandmarkBoundingBox(landmarks, canvasW, canvasH, padding = 24) {
   if (!landmarks || landmarks.length === 0) return null;
 
-  const visible = landmarks.filter(isLandmarkUsable);
+  const visible = landmarks.filter((lm, idx) => isLandmarkUsable(lm, idx));
   if (visible.length < 3) return null;
 
   const xs = visible.map((lm) => lm.x * canvasW);
@@ -603,58 +851,109 @@ export function getLandmarkBoundingBox(landmarks, canvasW, canvasH, padding = 24
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+// Core skeleton topology (without noisy finger/toe sub-triangles)
+const CORE_SKELETON_CONNECTIONS = [
+  // Face
+  [0, 1], [1, 2], [2, 3], [3, 7],   // nose → left eye → left ear
+  [0, 4], [4, 5], [5, 6], [6, 8],   // nose → right eye → right ear
+  [9, 10],                          // mouth
+  // Torso
+  [11, 12], [11, 23], [12, 24], [23, 24],
+  // Arms
+  [11, 13], [13, 15], [12, 14], [14, 16],
+  // Legs
+  [23, 25], [25, 27], [24, 26], [26, 28],
+];
+
+// Distal hand & foot connections (only drawn when hideNoisyExtremities is false)
+const DISTAL_SKELETON_CONNECTIONS = [
+  // Hands
+  [15, 17], [15, 19], [15, 21], [17, 19],
+  [16, 18], [16, 20], [16, 22], [18, 20],
+  // Feet
+  [27, 29], [29, 31], [27, 31],
+  [28, 30], [30, 32], [28, 32],
+];
+
+const FULL_SKELETON_CONNECTIONS = [
+  ...CORE_SKELETON_CONNECTIONS,
+  ...DISTAL_SKELETON_CONNECTIONS,
+];
+
+// Larger dots for the anchor joints, smaller for face/hand/foot detail.
+const MAJOR_KEYPOINTS = new Set([0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]);
+
 /**
- * Draw pose skeleton on canvas overlay, including head, torso, and limbs.
+ * Draw the pose skeleton on the canvas overlay.
+ *
+ * Includes:
+ *  - Smooth alpha fade when a joint approaches the visibility threshold
+ *  - Anatomical max-bone-length sanity guard so occluded joints never draw
+ *    giant stretched lines across the screen
+ *  - Optional filtering of noisy finger/toe sub-landmarks
  */
 export function drawSkeleton(ctx, landmarks, W, H, color = '#5b9cf5') {
   if (!landmarks) return;
 
-  const CONNECTIONS = [
-    // Head wireframe
-    [0, 1], [0, 4],     // nose to inner eyes
-    [1, 7], [4, 8],     // eyes to ears
-    [0, 11], [0, 12],   // head to shoulders
-    // Torso & Core
-    [11, 12],           // shoulders
-    [11, 23], [12, 24], // torso sides
-    [23, 24],           // hips
-    // Arms
-    [11, 13], [13, 15], // left arm
-    [12, 14], [14, 16], // right arm
-    // Legs
-    [23, 25], [25, 27], // left leg
-    [24, 26], [26, 28], // right leg
-  ];
+  const unit = Math.max(W, H) / 640;
+  const minVisBase = runtimeConfig.minLandmarkVisibility;
+  const hideDistal = runtimeConfig.hideNoisyExtremities;
+  const connections = hideDistal ? CORE_SKELETON_CONNECTIONS : FULL_SKELETON_CONNECTIONS;
+  const scale = calculateBodyScale(landmarks);
+  // Maximum plausible bone length in normalized coordinates; skips stretched
+  // hallucinated lines when one end of a limb was occluded.
+  const maxBoneSpan = Math.min(0.68, Math.max(0.38, 0.36 * scale));
+
+  const jointAlpha = (lm, idx) => {
+    const reqVis = requiredVisibilityForIndex(idx, minVisBase);
+    const vis = lm?.visibility ?? 1;
+    if (vis < reqVis) return 0;
+    return clamp((vis - reqVis + 0.04) / 0.18, 0.2, 1);
+  };
 
   ctx.save();
-  ctx.lineWidth = 2.5;
-  ctx.globalAlpha = 0.75;
+  ctx.lineCap = 'round';
 
-  // Draw bone lines
-  for (const [a, b] of CONNECTIONS) {
-    const lmA = landmarks[a];
-    const lmB = landmarks[b];
-    // Only bones between landmarks the analyzer actually trusts, so the
-    // overlay shows what is being measured rather than guessed limbs.
-    if (!isLandmarkUsable(lmA) || !isLandmarkUsable(lmB)) continue;
+  // Bones — dark halo underneath, colored line on top.
+  for (const pass of ['halo', 'line']) {
+    ctx.lineWidth = (pass === 'halo' ? 6 : 3) * unit;
+    ctx.strokeStyle = pass === 'halo' ? 'rgba(0, 0, 0, 0.45)' : color;
+    const basePassAlpha = pass === 'halo' ? 1 : 0.9;
 
-    ctx.beginPath();
-    ctx.strokeStyle = color;
-    ctx.moveTo(lmA.x * W, lmA.y * H);
-    ctx.lineTo(lmB.x * W, lmB.y * H);
-    ctx.stroke();
+    for (const [a, b] of connections) {
+      const lmA = landmarks[a];
+      const lmB = landmarks[b];
+      if (!isLandmarkUsable(lmA, a, minVisBase) || !isLandmarkUsable(lmB, b, minVisBase)) continue;
+      if (pointDistance(lmA, lmB) > maxBoneSpan) continue;
+
+      const boneVisAlpha = Math.min(jointAlpha(lmA, a), jointAlpha(lmB, b));
+      if (boneVisAlpha <= 0) continue;
+
+      ctx.globalAlpha = basePassAlpha * boneVisAlpha;
+      ctx.beginPath();
+      ctx.moveTo(lmA.x * W, lmA.y * H);
+      ctx.lineTo(lmB.x * W, lmB.y * H);
+      ctx.stroke();
+    }
   }
 
-  // Draw keypoint dots
-  for (const idx of TRACKED_LANDMARK_INDICES) {
+  // Keypoints
+  ctx.lineWidth = 1.5 * unit;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillStyle = color;
+  for (let idx = 0; idx < landmarks.length; idx++) {
+    if (hideDistal && DISTAL_SET.has(idx)) continue;
     const lm = landmarks[idx];
-    if (!isLandmarkUsable(lm)) continue;
+    if (!isLandmarkUsable(lm, idx, minVisBase)) continue;
+
+    const ptAlpha = jointAlpha(lm, idx);
+    if (ptAlpha <= 0) continue;
+
+    ctx.globalAlpha = ptAlpha;
     ctx.beginPath();
-    ctx.fillStyle = color;
-    // Slightly larger dots for head (0, 7, 8) and core (11, 12)
-    const isMajor = [0, 7, 8, 11, 12, 23, 24].includes(idx);
-    ctx.arc(lm.x * W, lm.y * H, isMajor ? 4.5 : 3.5, 0, Math.PI * 2);
+    ctx.arc(lm.x * W, lm.y * H, (MAJOR_KEYPOINTS.has(idx) ? 5 : 3.5) * unit, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
   }
 
   ctx.restore();

@@ -1,25 +1,28 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { BOX_COLORS } from '../lib/constants.js';
-import { getLandmarkBoundingBox, drawSkeleton } from '../lib/poseAnalyzer.js';
+import { drawSkeleton } from '../lib/poseAnalyzer.js';
 import { useLetterboxRect } from '../hooks/useLetterboxRect.js';
+import PersonTag from './PersonTag.jsx';
 import './CameraView.css';
 
 /**
  * CameraView
  *
- * Renders the camera video + canvas overlay.
- * Draws:
- *  - Mirrored video feed (selfie-style)
- *  - Bounding box around the detected person
- *  - Skeleton keypoints
- *  - Corner bracket decorations (HUD-style)
+ * Renders the camera/video feed + canvas overlay.
+ * Supports both MediaStream (`stream`) and URL/Blob video sources (`videoSrc`),
+ * optional mirroring (`mirrorVideo`), and draws the smoothed pose skeleton.
  */
 export default function CameraView({
   videoRef,
   stream,
+  videoSrc,
+  videoLoop = true,
+  mirrorVideo = true,
   onVideoReady,
+  onVideoError,
   landmarks,
   gameState,
+  observation,
   onStageRectChange,
 }) {
   const localVideoRef = useRef(null);
@@ -29,7 +32,7 @@ export default function CameraView({
   // The full capture is always shown (object-fit: contain) — this is the
   // visible video rect within the container, so HUD elements never sit over
   // the black letterbox bars that appear when aspect ratios don't match.
-  const stageInset = useLetterboxRect(containerRef, localVideoRef, stream);
+  const stageInset = useLetterboxRect(containerRef, localVideoRef, stream || videoSrc);
 
   // Sync node reference with parent ref
   const setVideoRef = useCallback(
@@ -44,16 +47,32 @@ export default function CameraView({
     [videoRef]
   );
 
-  // ── Attach stream to video element when available ────────────────────────
+  // ── Attach MediaStream or videoSrc to video element when available ───────
   useEffect(() => {
     const video = localVideoRef.current;
-    if (!video || !stream) return;
-
-    if (video.srcObject !== stream) {
-      video.srcObject = stream;
-    }
+    if (!video) return;
+    if (!stream && !videoSrc) return;
 
     let isMounted = true;
+
+    if (stream) {
+      if (video.src) {
+        video.removeAttribute('src');
+      }
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+      }
+    } else if (videoSrc) {
+      if (video.srcObject) {
+        video.srcObject = null;
+      }
+      video.crossOrigin = 'anonymous';
+      video.loop = videoLoop;
+      if (video.getAttribute('src') !== videoSrc) {
+        video.src = videoSrc;
+      }
+    }
+
     const handleReady = async () => {
       try {
         await video.play();
@@ -65,16 +84,33 @@ export default function CameraView({
       }
     };
 
+    const handleError = () => {
+      if (isMounted && onVideoError) {
+        onVideoError();
+      }
+    };
+
+    video.addEventListener('error', handleError);
+
     if (video.readyState >= 1) {
       handleReady();
     } else {
       video.addEventListener('loadedmetadata', handleReady);
-      return () => {
-        isMounted = false;
-        video.removeEventListener('loadedmetadata', handleReady);
-      };
     }
-  }, [stream, onVideoReady]);
+
+    return () => {
+      isMounted = false;
+      video.removeEventListener('loadedmetadata', handleReady);
+      video.removeEventListener('error', handleError);
+    };
+  }, [stream, videoSrc, videoLoop, onVideoReady, onVideoError]);
+
+  // Keep loop attribute updated live
+  useEffect(() => {
+    if (localVideoRef.current) {
+      localVideoRef.current.loop = videoLoop;
+    }
+  }, [videoLoop]);
 
   const getBoxColor = useCallback(() => {
     return BOX_COLORS[gameState?.toLowerCase()] ?? BOX_COLORS.detecting;
@@ -98,19 +134,8 @@ export default function CameraView({
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, W, H);
 
-      // Mirror transform (canvas is flipped via CSS, so we draw normally)
-      const color = getBoxColor();
-
-      // Both overlays are framing aids for getting into position. Once the
-      // round starts the camera goes clean: the player should be looking at
-      // themselves holding still, not at a box tinting them green.
-      if (landmarks && gameState !== 'PLAYING') {
-        drawSkeleton(ctx, landmarks, W, H, color);
-
-        const box = getLandmarkBoundingBox(landmarks, W, H, 24);
-        if (box) {
-          drawDetectionBox(ctx, box, color, gameState);
-        }
+      if (landmarks) {
+        drawSkeleton(ctx, landmarks, W, H, getBoxColor());
       }
 
       rafId = requestAnimationFrame(draw);
@@ -118,7 +143,7 @@ export default function CameraView({
 
     rafId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafId);
-  }, [landmarks, gameState, getBoxColor, videoRef]);
+  }, [landmarks, getBoxColor, videoRef]);
 
   // Share the visible-video rect with the parent so its own HUD (badge,
   // timer, buttons) can be confined to the same area.
@@ -126,20 +151,23 @@ export default function CameraView({
     onStageRectChange?.(stageInset);
   }, [stageInset, onStageRectChange]);
 
+  const mirrorClass = mirrorVideo ? 'mirrored' : '';
+
   return (
     <div className="camera-view" ref={containerRef}>
       <video
         ref={setVideoRef}
         id="camera-video"
-        className="camera-video"
+        className={`camera-video ${mirrorClass}`}
         autoPlay
         playsInline
         muted
+        loop={videoLoop}
       />
       <canvas
         ref={canvasRef}
         id="camera-canvas"
-        className="camera-canvas"
+        className={`camera-canvas ${mirrorClass}`}
       />
 
       {/* Confined to the visible video rect — never drawn over the black
@@ -169,90 +197,8 @@ export default function CameraView({
           </div>
         )}
 
+        <PersonTag observation={observation} landmarks={landmarks} mirrorVideo={mirrorVideo} />
       </div>
     </div>
   );
-}
-
-// ── Canvas drawing helpers ──────────────────────────────────────────────────
-
-function drawDetectionBox(ctx, box, color, gameState) {
-  const { x, y, width, height } = box;
-  const r = 10; // corner radius
-  const cornerLen = Math.min(width, height) * 0.2;
-
-  ctx.save();
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2.5;
-  ctx.globalAlpha = 0.9;
-
-  // Rounded rectangle (full box, low opacity)
-  ctx.globalAlpha = 0.2;
-  ctx.fillStyle = color;
-  roundRect(ctx, x, y, width, height, r);
-  ctx.fill();
-
-  // Corner brackets
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = 3;
-
-  // Top-left
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + cornerLen, y);
-  ctx.moveTo(x, y + r);
-  ctx.lineTo(x, y + cornerLen);
-  ctx.stroke();
-
-  // Top-right
-  ctx.beginPath();
-  ctx.moveTo(x + width - cornerLen, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.moveTo(x + width, y + r);
-  ctx.lineTo(x + width, y + cornerLen);
-  ctx.stroke();
-
-  // Bottom-left
-  ctx.beginPath();
-  ctx.moveTo(x, y + height - cornerLen);
-  ctx.lineTo(x, y + height - r);
-  ctx.moveTo(x + r, y + height);
-  ctx.lineTo(x + cornerLen, y + height);
-  ctx.stroke();
-
-  // Bottom-right
-  ctx.beginPath();
-  ctx.moveTo(x + width - cornerLen, y + height);
-  ctx.lineTo(x + width - r, y + height);
-  ctx.moveTo(x + width, y + height - cornerLen);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.stroke();
-
-  // Glow effect on active game
-  if (gameState === 'PLAYING') {
-    ctx.globalAlpha = 0.15;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 20;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 6;
-    roundRect(ctx, x, y, width, height, r);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-  }
-
-  ctx.restore();
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
 }

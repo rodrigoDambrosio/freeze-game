@@ -12,17 +12,11 @@ import './VitalityMonitor.css';
  * detector trying to prove they are alive. Green means that detector has
  * nothing — the player is winning that one. Red means it found them.
  *
- * Each signal keeps its own row rather than being rolled into one number,
- * because which one gives a player away is the interesting part. Holding a
- * pose is the easy half; suppressing the face is what catches people.
+ * Also displayed before the game starts (`isPreview = true`) so passers-by at
+ * the stand can see the C.U.I.D.A. detectors reacting live to their movements,
+ * blinks, and facial expressions as they walk past.
  */
 
-/**
- * One detector's row.
- *
- * `found` is true when this detector has caught the player, which is the bad
- * outcome for them — so red means found, green means still hidden.
- */
 function Detector({ label, found, value, hint, pending, disabled }) {
   const status = disabled ? 'disabled' : pending ? 'pending' : found ? 'found' : 'hidden';
   return (
@@ -52,9 +46,17 @@ function Meter({ value, threshold }) {
 }
 
 export default function VitalityMonitor({
-  reading, faceLoading, gestureDrift = 0, gestureThreshold = 1,
-  detectGestures = true, detectBlink = true,
-  blinkCount = 0, blinkLimit = null,
+  reading,
+  faceLoading,
+  gestureDrift = 0,
+  gestureThreshold = 1,
+  detectGestures = true,
+  detectBlink = true,
+  blinkCount = 0,
+  blinkLimit = null,
+  movementScore = 0,
+  movementThreshold = 0.014,
+  isPreview = false,
 }) {
   if (faceLoading) {
     return (
@@ -70,23 +72,28 @@ export default function VitalityMonitor({
 
   const expression = reading?.expressionActivity ?? 0;
   const head = reading?.headActivity ?? 0;
-  const blinkFound = blinkLimit !== null && blinkCount > blinkLimit;
+
+  const blinkFound = isPreview
+    ? (reading?.lastBlinkAgo != null && reading.lastBlinkAgo < 800)
+    : (blinkLimit !== null && blinkCount > blinkLimit);
   const gestureFound = gestureDrift > gestureThreshold;
   const headFound = head > HEAD_MOTION_ACTIVE;
+  const expressionFound = expression > EXPRESSION_ACTIVE_STD;
+  const bodyFound = movementScore > movementThreshold;
 
   // How many detectors currently have the player. Zero is what wins.
   const found = [
     detectBlink && blinkFound,
     detectGestures && gestureFound,
     headFound,
+    isPreview && expressionFound,
+    isPreview && bodyFound,
   ].filter(Boolean).length;
 
   return (
-    // The panel sits back while the player is getting away with it and only
-    // comes forward once a detector has them.
-    <div className={`vm-panel ${found > 0 ? 'vm-panel-alert' : ''}`}>
+    <div className={`vm-panel ${!isPreview && found > 0 ? 'vm-panel-alert' : ''}`}>
       <div className="vm-head">
-        <span className="vm-title">Detectores</span>
+        <span className="vm-title">{isPreview ? 'Sensores en vivo' : 'Detectores'}</span>
         <span className={`vm-count ${found === 0 ? 'vm-count-clear' : ''}`}>
           {found === 0 ? 'ninguno te ve' : `${found} te detecta${found > 1 ? 'n' : ''}`}
         </span>
@@ -98,11 +105,11 @@ export default function VitalityMonitor({
           disabled={!detectBlink}
           found={blinkFound}
           value={
-            blinkLimit !== null && blinkLimit > 0
+            !isPreview && blinkLimit !== null && blinkLimit > 0
               ? `${blinkCount} / ${blinkLimit}`
               : blinkCount > 0 ? String(blinkCount) : 'ninguno'
           }
-          hint={blinkFound ? 'te delató' : null}
+          hint={!isPreview && blinkFound ? 'te delató' : null}
         />
 
         <div className="vm-signal-extra">
@@ -111,7 +118,7 @@ export default function VitalityMonitor({
             disabled={!detectGestures}
             found={gestureFound}
             value={gestureDrift.toFixed(3)}
-            hint={gestureFound ? 'te delató' : null}
+            hint={!isPreview && gestureFound ? 'te delató' : null}
           />
           {detectGestures && <Meter value={gestureDrift} threshold={gestureThreshold} />}
         </div>
@@ -121,7 +128,7 @@ export default function VitalityMonitor({
             label="Micromovimiento"
             found={headFound}
             value={head.toFixed(4)}
-            hint={headFound ? 'te delató' : null}
+            hint={!isPreview && headFound ? 'te delató' : null}
           />
           <Meter value={head} threshold={HEAD_MOTION_ACTIVE} />
         </div>
@@ -129,10 +136,19 @@ export default function VitalityMonitor({
         <div className="vm-signal-extra">
           <Detector
             label="Expresión"
-            found={expression > EXPRESSION_ACTIVE_STD}
+            found={expressionFound}
             value={expression.toFixed(4)}
           />
           <Meter value={expression} threshold={EXPRESSION_ACTIVE_STD} />
+        </div>
+
+        <div className="vm-signal-extra">
+          <Detector
+            label="Cuerpo"
+            found={bodyFound}
+            value={movementScore.toFixed(3)}
+          />
+          <Meter value={movementScore} threshold={movementThreshold} />
         </div>
       </div>
     </div>

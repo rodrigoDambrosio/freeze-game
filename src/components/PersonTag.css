@@ -1,0 +1,66 @@
+.person-tag {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 190px;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  background: rgba(8, 11, 20, 0.72);
+  border: 1px solid rgba(91, 156, 245, 0.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 15;
+  /* Follows the head smoothly instead of jumping with every landmark jitter. */
+  transition: top 160ms linear, left 160ms linear;
+}
+
+/* Offset to the side of the head so it never covers the face. */
+.person-tag-right { transform: translate(clamp(60px, 9vw, 120px), -50%); }
+.person-tag-left  { transform: translate(calc(-100% - clamp(60px, 9vw, 120px)), -50%); }
+
+.person-tag-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--signal);
+  font-variant-numeric: tabular-nums;
+}
+
+.person-tag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 8px var(--signal);
+  animation: personTagPulse 1.4s ease-in-out infinite;
+}
+
+.person-tag-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #f2efea;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.person-tag-icon { font-size: 1.4rem; }
+
+@keyframes personTagPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (max-width: 640px) {
+  .person-tag { min-width: 140px; padding: 8px 12px; }
+  .person-tag-line { font-size: 1rem; }
+  .person-tag-icon { font-size: 1.1rem; }
+}
